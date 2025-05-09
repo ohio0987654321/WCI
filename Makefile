@@ -34,7 +34,7 @@ LIB_NAME = libwindow_control.dylib
 BIN_NAME = injector
 
 # Target archs for universal binary
-ARCHS = x86_64 arm64
+ARCHS = x86_64 arm64 arm64e
 ARCH_FLAGS = $(foreach arch,$(ARCHS),-arch $(arch))
 
 # Version information

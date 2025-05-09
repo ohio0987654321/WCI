@@ -22,8 +22,6 @@ Options:
   --click-through    Make windows click-through (ignore mouse events)
   --all              Apply all profiles
 
-  --property CLASS.PROPERTY=VALUE   Override specific property
-
   -v, --verbose      Enable verbose logging
   -h, --help         Show this help message
   --version          Show version information
@@ -32,17 +30,14 @@ Options:
 ### Examples
 
 ```bash
-# Make TextEdit invisible to screen recording
+# Apply all profiles automatically (default behavior)
+injector /Applications/TextEdit.app
+
+# Make TextEdit invisible to screen recording only
 injector --invisible /Applications/TextEdit.app
 
 # Hide Calculator from the Dock and make it unfocusable
 injector --stealth --unfocusable /Applications/Calculator.app
-
-# Apply all profiles to Notes
-injector --all /Applications/Notes.app
-
-# Set a custom background color for Safari windows
-injector --property NSWindow.backgroundColor=0,0,0,0.5 /Applications/Safari.app
 ```
 
 ## Profiles
@@ -63,15 +58,6 @@ Prevents windows from receiving keyboard focus by setting `canBecomeKey` and `ca
 
 Makes windows click-through, allowing mouse events to pass through to underlying windows by setting `ignoresMouseEvents` to `YES`.
 
-## Custom Property Overrides
-
-For more advanced use cases, you can directly override specific properties:
-
-```bash
-injector --property NSWindow.hasShadow=NO /Applications/Safari.app
-injector --property NSWindow.level=1000 /Applications/Safari.app
-injector --property NSApplication.activationPolicy=2 /Applications/Safari.app
-```
 
 ## Building from Source
 

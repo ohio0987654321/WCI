@@ -12,8 +12,9 @@
 // Function prototypes
 void printUsage(void);
 void printVersion(void);
-BOOL parsePropertyOverride(NSString *propertyString, NSMutableDictionary *overrides);
-NSString *resolveApplicationPath(NSString *path);
+void logDirectoryStructure(NSString *path, int maxDepth);
+NSString* _logDirectoryStructureWithIndent(NSString *path, NSString *indent, int currentDepth, int maxDepth);
+NSString *resolveApplicationPath(NSString *path, BOOL debugMode);
 
 /**
  * Main entry point for the WindowControlInjector command-line tool
@@ -25,9 +26,9 @@ int main(int argc, const char * argv[]) {
 
         // Parse command line arguments
         NSMutableArray<NSString *> *profileNames = [NSMutableArray array];
-        NSMutableDictionary *propertyOverrides = [NSMutableDictionary dictionary];
         NSString *applicationPath = nil;
         BOOL applyAll = NO;
+        BOOL debugMode = NO;
 
         // Skip the program name (argv[0])
         for (int i = 1; i < argc; i++) {
@@ -40,6 +41,9 @@ int main(int argc, const char * argv[]) {
                     return 0;
                 } else if ([arg isEqualToString:@"-v"] || [arg isEqualToString:@"--verbose"]) {
                     WCSetLogLevel(WCLogLevelDebug);
+                } else if ([arg isEqualToString:@"--debug"]) {
+                    WCSetLogLevel(WCLogLevelDebug);
+                    debugMode = YES;
                 } else if ([arg isEqualToString:@"--version"]) {
                     printVersion();
                     return 0;
@@ -53,19 +57,6 @@ int main(int argc, const char * argv[]) {
                     [profileNames addObject:@"click-through"];
                 } else if ([arg isEqualToString:@"--all"]) {
                     applyAll = YES;
-                } else if ([arg hasPrefix:@"--property"]) {
-                    // Handle property override
-                    if (i + 1 < argc) {
-                        NSString *propertyString = [NSString stringWithUTF8String:argv[++i]];
-                        if (!parsePropertyOverride(propertyString, propertyOverrides)) {
-                            WCLogError(@"Invalid property override format: %@", propertyString);
-                            WCLogError(@"Expected format: CLASS.PROPERTY=VALUE");
-                            return 1;
-                        }
-                    } else {
-                        WCLogError(@"--property option requires a value");
-                        return 1;
-                    }
                 } else {
                     WCLogError(@"Unknown option: %@", arg);
                     printUsage();
@@ -90,15 +81,20 @@ int main(int argc, const char * argv[]) {
             return 1;
         }
 
-        // Resolve application path
-        NSString *resolvedPath = resolveApplicationPath(applicationPath);
-        if (resolvedPath == nil) {
+        // Verify application path exists and executable can be found
+        NSString *executablePath = resolveApplicationPath(applicationPath, debugMode);
+        if (executablePath == nil) {
             WCLogError(@"Invalid application path: %@", applicationPath);
             return 1;
         }
 
-        // If --all is specified, add all profiles
-        if (applyAll) {
+        if (debugMode) {
+            WCLogInfo(@"Found executable: %@", executablePath);
+            WCLogInfo(@"Will use application bundle: %@", applicationPath);
+        }
+
+        // If --all is specified or no profiles specified, add all profiles
+        if (applyAll || profileNames.count == 0) {
             [profileNames removeAllObjects]; // Clear any individually specified profiles
             [profileNames addObjectsFromArray:@[@"invisible", @"stealth", @"unfocusable", @"click-through"]];
         }
@@ -112,24 +108,11 @@ int main(int argc, const char * argv[]) {
             return 1;
         }
 
-        // Apply profiles or property overrides
-        if (profileNames.count > 0) {
-            // Apply profiles
-            WCLogInfo(@"Applying profiles: %@", [profileNames componentsJoinedByString:@", "]);
-            success = [WCInjector injectIntoApplication:resolvedPath
-                                          withProfiles:profileNames
-                                                 error:&error];
-        } else if (propertyOverrides.count > 0) {
-            // Apply property overrides
-            WCLogInfo(@"Applying property overrides: %@", propertyOverrides);
-            success = [WCInjector injectIntoApplication:resolvedPath
-                                 withPropertyOverrides:propertyOverrides
-                                                 error:&error];
-        } else {
-            WCLogError(@"No profiles or property overrides specified");
-            printUsage();
-            return 1;
-        }
+        // Apply profiles
+        WCLogInfo(@"Applying profiles: %@", [profileNames componentsJoinedByString:@", "]);
+        success = [WCInjector injectIntoApplication:applicationPath
+                                      withProfiles:profileNames
+                                             error:&error];
 
         if (!success) {
             if (error) {
@@ -140,7 +123,7 @@ int main(int argc, const char * argv[]) {
             return 1;
         }
 
-        WCLogInfo(@"Successfully injected into application: %@", resolvedPath);
+        WCLogInfo(@"Successfully injected into application: %@", applicationPath);
         return 0;
     }
 }
@@ -157,17 +140,15 @@ void printUsage(void) {
     printf("  --click-through    Make windows click-through (ignore mouse events)\n");
     printf("  --all              Apply all profiles\n\n");
 
-    printf("  --property CLASS.PROPERTY=VALUE   Override specific property\n\n");
-
     printf("  -v, --verbose      Enable verbose logging\n");
+    printf("  --debug            Enable detailed path resolution debugging\n");
     printf("  -h, --help         Show this help message\n");
     printf("  --version          Show version information\n\n");
 
     printf("Examples:\n");
-    printf("  injector --invisible /Applications/TextEdit.app\n");
+    printf("  injector /Applications/TextEdit.app               # Applies all profiles automatically\n");
+    printf("  injector --invisible /Applications/TextEdit.app   # Apply only invisibility\n");
     printf("  injector --stealth --unfocusable /Applications/Calculator.app\n");
-    printf("  injector --all /Applications/Notes.app\n");
-    printf("  injector --property NSWindow.backgroundColor=0,0,0,0.5 /Applications/Safari.app\n");
 }
 
 /**
@@ -178,133 +159,263 @@ void printVersion(void) {
     printf("Copyright (c) 2025. All rights reserved.\n");
 }
 
-/**
- * Parse a property override string in the format CLASS.PROPERTY=VALUE
- *
- * @param propertyString The property override string
- * @param overrides The dictionary to add the parsed override to
- * @return YES if the property string was parsed successfully, NO otherwise
- */
-BOOL parsePropertyOverride(NSString *propertyString, NSMutableDictionary *overrides) {
-    // Split by the first equals sign
-    NSRange equalsRange = [propertyString rangeOfString:@"="];
-    if (equalsRange.location == NSNotFound) {
-        return NO;
-    }
-
-    NSString *propertyPath = [propertyString substringToIndex:equalsRange.location];
-    NSString *valueString = [propertyString substringFromIndex:equalsRange.location + 1];
-
-    // Split the property path by the first dot
-    NSRange dotRange = [propertyPath rangeOfString:@"."];
-    if (dotRange.location == NSNotFound) {
-        return NO;
-    }
-
-    NSString *className = [propertyPath substringToIndex:dotRange.location];
-    NSString *propertyName = [propertyPath substringFromIndex:dotRange.location + 1];
-
-    // Parse the value (basic types only for now)
-    id value = nil;
-
-    // Try to parse as a number
-    if ([valueString isEqualToString:@"YES"] || [valueString isEqualToString:@"true"]) {
-        value = @YES;
-    } else if ([valueString isEqualToString:@"NO"] || [valueString isEqualToString:@"false"]) {
-        value = @NO;
-    } else if ([valueString rangeOfString:@","].location != NSNotFound) {
-        // Parse as color (r,g,b,a)
-        NSArray<NSString *> *components = [valueString componentsSeparatedByString:@","];
-        if (components.count == 3 || components.count == 4) {
-            CGFloat r = [components[0] floatValue];
-            CGFloat g = [components[1] floatValue];
-            CGFloat b = [components[2] floatValue];
-            CGFloat a = (components.count == 4) ? [components[3] floatValue] : 1.0;
-
-            // Create a string representation of the color with limited decimal places
-            value = [NSString stringWithFormat:@"%.2f,%.2f,%.2f,%.2f", r, g, b, a];
-        } else {
-            return NO;
-        }
-    } else {
-        // Try to parse as a number
-        NSNumberFormatter *formatter = [[NSNumberFormatter alloc] init];
-        [formatter setNumberStyle:NSNumberFormatterDecimalStyle];
-        NSNumber *number = [formatter numberFromString:valueString];
-
-        if (number != nil) {
-            value = number;
-        } else {
-            // Treat as a string
-            value = valueString;
-        }
-    }
-
-    // Add to overrides
-    if (overrides[className] == nil) {
-        overrides[className] = [NSMutableDictionary dictionary];
-    }
-
-    ((NSMutableDictionary *)overrides[className])[propertyName] = value;
-
-    return YES;
-}
 
 /**
  * Resolve and validate the application path
  *
  * @param path The application path to resolve
+ * @param debugMode Whether to enable detailed debug output
  * @return The resolved path, or nil if the path is invalid
  */
-NSString *resolveApplicationPath(NSString *path) {
+NSString *resolveApplicationPath(NSString *path, BOOL debugMode) {
+    NSFileManager *fileManager = [NSFileManager defaultManager];
+    NSMutableArray *attemptedPaths = [NSMutableArray array];
+
+    // 1. Normalize the path
+    NSString *normalizedPath = [path stringByStandardizingPath];
+    if (debugMode) {
+        WCLogInfo(@"Resolving application path: %@", path);
+        WCLogInfo(@"Normalized path: %@", normalizedPath);
+    }
+
     // Check if the path is valid
     BOOL isDirectory = NO;
-    BOOL exists = [[NSFileManager defaultManager] fileExistsAtPath:path isDirectory:&isDirectory];
+    BOOL exists = [fileManager fileExistsAtPath:normalizedPath isDirectory:&isDirectory];
 
     if (!exists) {
+        if (debugMode) {
+            WCLogDebug(@"Path does not exist: %@", normalizedPath);
+        }
         WCLogError(@"Application not found at path: %@", path);
         return nil;
     }
 
-    // If it's a directory, check if it's an app bundle
-    if (isDirectory) {
-        // Check if it has the .app extension
-        if (![path.pathExtension isEqualToString:@"app"]) {
-            WCLogWarning(@"Path doesn't have .app extension: %@", path);
-        }
+    // 2. Handle symlinks
+    NSString *resolvedPath = normalizedPath;
+    NSDictionary *fileAttributes = [fileManager attributesOfItemAtPath:normalizedPath error:nil];
+    if (fileAttributes && fileAttributes[NSFileType] == NSFileTypeSymbolicLink) {
+        NSError *linkError = nil;
+        resolvedPath = [fileManager destinationOfSymbolicLinkAtPath:normalizedPath error:&linkError];
 
-        // Check for Info.plist
-        NSString *infoPlistPath = [path stringByAppendingPathComponent:@"Contents/Info.plist"];
-        if (![[NSFileManager defaultManager] fileExistsAtPath:infoPlistPath]) {
-            WCLogError(@"Not a valid application bundle (missing Info.plist): %@", path);
+        if (linkError || !resolvedPath) {
+            WCLogError(@"Failed to resolve symlink: %@", normalizedPath);
+            if (linkError) {
+                WCLogError(@"Error: %@", [linkError localizedDescription]);
+            }
             return nil;
         }
 
-        // Get the executable path from Info.plist
-        NSDictionary *infoPlist = [NSDictionary dictionaryWithContentsOfFile:infoPlistPath];
-        NSString *executableName = infoPlist[@"CFBundleExecutable"];
-
-        if (executableName == nil) {
-            WCLogError(@"Invalid Info.plist (missing CFBundleExecutable): %@", infoPlistPath);
-            return nil;
+        if (debugMode) {
+            WCLogInfo(@"Resolved symlink to: %@", resolvedPath);
         }
 
-        NSString *executablePath = [path stringByAppendingPathComponent:
-                                   [NSString stringWithFormat:@"Contents/MacOS/%@", executableName]];
-
-        if (![[NSFileManager defaultManager] fileExistsAtPath:executablePath]) {
-            WCLogError(@"Executable not found: %@", executablePath);
+        // Check if the resolved path exists
+        exists = [fileManager fileExistsAtPath:resolvedPath isDirectory:&isDirectory];
+        if (!exists) {
+            WCLogError(@"Symlink destination does not exist: %@", resolvedPath);
             return nil;
         }
-
-        return executablePath;
-    } else {
-        // It's a file, check if it's executable
-        if (![[NSFileManager defaultManager] isExecutableFileAtPath:path]) {
-            WCLogError(@"File is not executable: %@", path);
-            return nil;
-        }
-
-        return path;
     }
+
+    // 3. If it's a directory, try to handle it as an app bundle or find an executable
+    if (isDirectory) {
+        if (debugMode) {
+            WCLogInfo(@"Path is a directory: %@", resolvedPath);
+        }
+
+        // 3.1 Check if it has the .app extension (common but not required)
+        BOOL isAppBundle = [resolvedPath.pathExtension isEqualToString:@"app"];
+        if (!isAppBundle) {
+            WCLogWarning(@"Path doesn't have .app extension: %@", resolvedPath);
+        }
+
+        // 3.2 Try standard app bundle structure
+        NSString *contentsPath = [resolvedPath stringByAppendingPathComponent:@"Contents"];
+        NSString *macOSPath = [contentsPath stringByAppendingPathComponent:@"MacOS"];
+        NSString *infoPlistPath = [contentsPath stringByAppendingPathComponent:@"Info.plist"];
+
+        // 3.3 Try to get executable from Info.plist if it exists
+        if ([fileManager fileExistsAtPath:infoPlistPath]) {
+            if (debugMode) {
+                WCLogInfo(@"Found Info.plist at: %@", infoPlistPath);
+            }
+
+            NSDictionary *infoPlist = [NSDictionary dictionaryWithContentsOfFile:infoPlistPath];
+            NSString *executableName = infoPlist[@"CFBundleExecutable"];
+
+            if (executableName) {
+                if (debugMode) {
+                    WCLogInfo(@"Found CFBundleExecutable in Info.plist: %@", executableName);
+                }
+
+                // Standard location
+                NSString *executablePath = [macOSPath stringByAppendingPathComponent:executableName];
+                [attemptedPaths addObject:executablePath];
+
+                if ([fileManager fileExistsAtPath:executablePath] &&
+                    [fileManager isExecutableFileAtPath:executablePath]) {
+                    if (debugMode) {
+                        WCLogInfo(@"Found executable at standard location: %@", executablePath);
+                    }
+                    return executablePath;
+                }
+
+                // Try alternative locations if standard failed
+
+                // Try without MacOS dir
+                executablePath = [contentsPath stringByAppendingPathComponent:executableName];
+                [attemptedPaths addObject:executablePath];
+                if ([fileManager fileExistsAtPath:executablePath] &&
+                    [fileManager isExecutableFileAtPath:executablePath]) {
+                    if (debugMode) {
+                        WCLogInfo(@"Found executable directly in Contents: %@", executablePath);
+                    }
+                    return executablePath;
+                }
+
+                // Try at app bundle root
+                executablePath = [resolvedPath stringByAppendingPathComponent:executableName];
+                [attemptedPaths addObject:executablePath];
+                if ([fileManager fileExistsAtPath:executablePath] &&
+                    [fileManager isExecutableFileAtPath:executablePath]) {
+                    if (debugMode) {
+                        WCLogInfo(@"Found executable at app bundle root: %@", executablePath);
+                    }
+                    return executablePath;
+                }
+            } else {
+                if (debugMode) {
+                    WCLogDebug(@"No CFBundleExecutable found in Info.plist");
+                }
+            }
+        }
+
+        // 3.4 Try fallback: use app name as executable name
+        if ([fileManager fileExistsAtPath:macOSPath]) {
+            NSString *appName = [[resolvedPath lastPathComponent] stringByDeletingPathExtension];
+            NSString *executablePath = [macOSPath stringByAppendingPathComponent:appName];
+            [attemptedPaths addObject:executablePath];
+
+            if ([fileManager fileExistsAtPath:executablePath] &&
+                [fileManager isExecutableFileAtPath:executablePath]) {
+                if (debugMode) {
+                    WCLogInfo(@"Found executable using app name: %@", executablePath);
+                }
+                return executablePath;
+            }
+        }
+
+        // 3.5 Last resort: try to find any executable in MacOS directory
+        if ([fileManager fileExistsAtPath:macOSPath]) {
+            NSError *error = nil;
+            NSArray *macOSContents = [fileManager contentsOfDirectoryAtPath:macOSPath error:&error];
+
+            if (error == nil && macOSContents.count > 0) {
+                if (debugMode) {
+                    WCLogInfo(@"Searching for any executable in MacOS directory");
+                }
+
+                for (NSString *item in macOSContents) {
+                    NSString *itemPath = [macOSPath stringByAppendingPathComponent:item];
+                    [attemptedPaths addObject:itemPath];
+
+                    if ([fileManager isExecutableFileAtPath:itemPath]) {
+                        if (debugMode) {
+                            WCLogInfo(@"Found executable in MacOS directory: %@", itemPath);
+                        }
+                        return itemPath;
+                    }
+                }
+            }
+        }
+
+        // 3.6 Check if the directory itself is executable (rare)
+        if ([fileManager isExecutableFileAtPath:resolvedPath]) {
+            if (debugMode) {
+                WCLogInfo(@"Directory itself is executable: %@", resolvedPath);
+            }
+            return resolvedPath;
+        }
+
+        // 3.7 Nothing worked, provide detailed error
+        WCLogError(@"Could not find executable in application bundle: %@", resolvedPath);
+        if (debugMode) {
+            WCLogDebug(@"Attempted paths:");
+            for (NSString *attempt in attemptedPaths) {
+                WCLogDebug(@"  - %@", attempt);
+            }
+
+            // Try to show directory structure for debugging
+            WCLogDebug(@"Directory structure:");
+            logDirectoryStructure(resolvedPath, 2); // Limit depth to avoid huge output
+        }
+
+        return nil;
+    } else {
+        // 4. It's a file, check if it's executable
+        if (debugMode) {
+            WCLogInfo(@"Path is a file: %@", resolvedPath);
+        }
+
+        if ([fileManager isExecutableFileAtPath:resolvedPath]) {
+            if (debugMode) {
+                WCLogInfo(@"File is executable: %@", resolvedPath);
+            }
+            return resolvedPath;
+        } else {
+            WCLogError(@"File is not executable: %@", resolvedPath);
+            return nil;
+        }
+    }
+}
+
+/**
+ * Helper method to log directory structure for debugging
+ */
+void logDirectoryStructure(NSString *path, int maxDepth) {
+    _logDirectoryStructureWithIndent(path, @"  ", 0, maxDepth);
+}
+
+/**
+ * Recursive helper for logging directory structure
+ */
+NSString* _logDirectoryStructureWithIndent(NSString *path, NSString *indent, int currentDepth, int maxDepth) {
+    if (currentDepth > maxDepth) {
+        return @"";
+    }
+
+    NSFileManager *fileManager = [NSFileManager defaultManager];
+    NSError *error = nil;
+    NSArray *contents = [fileManager contentsOfDirectoryAtPath:path error:&error];
+
+    if (error) {
+        WCLogDebug(@"%@%@ (Error reading contents: %@)", indent, [path lastPathComponent], [error localizedDescription]);
+        return @"";
+    }
+
+    // Log this directory
+    WCLogDebug(@"%@%@/", indent, [path lastPathComponent]);
+
+    // Prepare next level indent
+    NSString *nextIndent = [indent stringByAppendingString:@"  "];
+
+    for (NSString *item in contents) {
+        NSString *itemPath = [path stringByAppendingPathComponent:item];
+        BOOL isDirectory = NO;
+
+        if ([fileManager fileExistsAtPath:itemPath isDirectory:&isDirectory]) {
+            if (isDirectory) {
+                _logDirectoryStructureWithIndent(itemPath, nextIndent, currentDepth + 1, maxDepth);
+            } else {
+                BOOL isExecutable = [fileManager isExecutableFileAtPath:itemPath];
+                if (isExecutable) {
+                    WCLogDebug(@"%@%@ (executable)", nextIndent, item);
+                } else {
+                    WCLogDebug(@"%@%@", nextIndent, item);
+                }
+            }
+        }
+    }
+
+    return @"";
 }

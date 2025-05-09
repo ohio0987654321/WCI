@@ -45,4 +45,8 @@
     };
 }
 
+- (NSArray<NSString *> *)dependencies {
+    return nil; // No dependencies
+}
+
 @end
