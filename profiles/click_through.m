@@ -29,18 +29,27 @@
             // Set ignoresMouseEvents to YES to allow clicks to pass through
             @"ignoresMouseEvents": @YES,
 
-            // Optional: Keep window focused but not accepting mouse events
-            // Uncomment if needed
-            // @"canBecomeKey": @YES,
+            // Make window visually appear non-interactive
+            @"titlebarAppearsTransparent": @YES,
+            @"alphaValue": @0.8,
+            @"backgroundColor": [NSColor colorWithCalibratedWhite:1.0 alpha:0.5],
 
-            // Optional: Adjust opacity to visually indicate click-through status
-            // Uncomment if needed
-            // @"alphaValue": @0.8,
+            // Set collection behavior to indicate window is non-interactive
+            @"collectionBehavior": @(NSWindowCollectionBehaviorTransient |
+                                     NSWindowCollectionBehaviorStationary),
 
-            // Optional: Useful for visualization of the click-through area
-            // but keeping the window semi-transparent
-            // Uncomment if needed
-            // @"backgroundColor": [NSColor colorWithCalibratedWhite:1.0 alpha:0.5],
+            // Exclude from window menus as it's not typically interactive
+            @"excludedFromWindowsMenu": @YES,
+
+            // Allow window to be moved by background to reposition if needed
+            // even though clicks pass through
+            @"movableByWindowBackground": @YES,
+
+            // Remove shadow to better indicate it's not a standard window
+            @"hasShadow": @NO,
+
+            // Keep window unfocusable but visible
+            @"canBecomeKey": @NO,
         }
     };
 }

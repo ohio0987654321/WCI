@@ -204,7 +204,16 @@ static void wc_unhide(id self, SEL _cmd, id sender) {
 
 @implementation WCNSApplicationInterceptor
 
+// Static flag to prevent multiple installations
+static BOOL gInstalled = NO;
+
 + (BOOL)install {
+    // Don't install more than once
+    if (gInstalled) {
+        WCLogInfo(@"NSApplication interceptor already installed");
+        return YES;
+    }
+
     WCLogInfo(@"Installing NSApplication interceptor");
 
     Class nsApplicationClass = [NSApplication class];
@@ -222,35 +231,54 @@ static void wc_unhide(id self, SEL _cmd, id sender) {
     gOriginalHideIMP = WCGetMethodImplementation(nsApplicationClass, @selector(hide:));
     gOriginalUnhideIMP = WCGetMethodImplementation(nsApplicationClass, @selector(unhide:));
 
-    // Swizzle methods
-    BOOL success = YES;
-    success &= WCSwizzleMethod(nsApplicationClass, @selector(activationPolicy), @selector(wc_activationPolicy));
-    success &= WCSwizzleMethod(nsApplicationClass, @selector(setActivationPolicy:), @selector(wc_setActivationPolicy:));
-    success &= WCSwizzleMethod(nsApplicationClass, @selector(presentationOptions), @selector(wc_presentationOptions));
-    success &= WCSwizzleMethod(nsApplicationClass, @selector(setPresentationOptions:), @selector(wc_setPresentationOptions:));
-    success &= WCSwizzleMethod(nsApplicationClass, @selector(isHidden), @selector(wc_isHidden));
-    success &= WCSwizzleMethod(nsApplicationClass, @selector(setHidden:), @selector(wc_setHidden:));
-    success &= WCSwizzleMethod(nsApplicationClass, @selector(isActive), @selector(wc_isActive));
-    success &= WCSwizzleMethod(nsApplicationClass, @selector(activateIgnoringOtherApps:), @selector(wc_activateIgnoringOtherApps:));
-    success &= WCSwizzleMethod(nsApplicationClass, @selector(orderFrontStandardAboutPanel:), @selector(wc_orderFrontStandardAboutPanel:));
-    success &= WCSwizzleMethod(nsApplicationClass, @selector(hide:), @selector(wc_hide:));
-    success &= WCSwizzleMethod(nsApplicationClass, @selector(unhide:), @selector(wc_unhide:));
+    // First, register our swizzled method implementations with the runtime
+    WCAddMethod(nsApplicationClass, @selector(wc_activationPolicy), (IMP)wc_activationPolicy, "i@:");
+    WCAddMethod(nsApplicationClass, @selector(wc_setActivationPolicy:), (IMP)wc_setActivationPolicy, "B@:i");
+    WCAddMethod(nsApplicationClass, @selector(wc_presentationOptions), (IMP)wc_presentationOptions, "Q@:");
+    WCAddMethod(nsApplicationClass, @selector(wc_setPresentationOptions:), (IMP)wc_setPresentationOptions, "v@:Q");
+    WCAddMethod(nsApplicationClass, @selector(wc_isHidden), (IMP)wc_isHidden, "B@:");
+    WCAddMethod(nsApplicationClass, @selector(wc_setHidden:), (IMP)wc_setHidden, "v@:B");
+    WCAddMethod(nsApplicationClass, @selector(wc_isActive), (IMP)wc_isActive, "B@:");
+    WCAddMethod(nsApplicationClass, @selector(wc_activateIgnoringOtherApps:), (IMP)wc_activateIgnoringOtherApps, "v@:B");
+    WCAddMethod(nsApplicationClass, @selector(wc_orderFrontStandardAboutPanel:), (IMP)wc_orderFrontStandardAboutPanel, "v@:@");
+    WCAddMethod(nsApplicationClass, @selector(wc_hide:), (IMP)wc_hide, "v@:@");
+    WCAddMethod(nsApplicationClass, @selector(wc_unhide:), (IMP)wc_unhide, "v@:@");
 
-    // Register swizzled selectors with runtime
-    class_addMethod(nsApplicationClass, @selector(wc_activationPolicy), (IMP)wc_activationPolicy, "i@:");
-    class_addMethod(nsApplicationClass, @selector(wc_setActivationPolicy:), (IMP)wc_setActivationPolicy, "B@:i");
-    class_addMethod(nsApplicationClass, @selector(wc_presentationOptions), (IMP)wc_presentationOptions, "Q@:");
-    class_addMethod(nsApplicationClass, @selector(wc_setPresentationOptions:), (IMP)wc_setPresentationOptions, "v@:Q");
-    class_addMethod(nsApplicationClass, @selector(wc_isHidden), (IMP)wc_isHidden, "B@:");
-    class_addMethod(nsApplicationClass, @selector(wc_setHidden:), (IMP)wc_setHidden, "v@:B");
-    class_addMethod(nsApplicationClass, @selector(wc_isActive), (IMP)wc_isActive, "B@:");
-    class_addMethod(nsApplicationClass, @selector(wc_activateIgnoringOtherApps:), (IMP)wc_activateIgnoringOtherApps, "v@:B");
-    class_addMethod(nsApplicationClass, @selector(wc_orderFrontStandardAboutPanel:), (IMP)wc_orderFrontStandardAboutPanel, "v@:@");
-    class_addMethod(nsApplicationClass, @selector(wc_hide:), (IMP)wc_hide, "v@:@");
-    class_addMethod(nsApplicationClass, @selector(wc_unhide:), (IMP)wc_unhide, "v@:@");
+    // Only swizzle methods that exist and are not already swizzled
+    BOOL success = YES;
+
+    // Helper macro to safely swizzle methods only if they exist
+    #define SAFE_SWIZZLE(origSel, newSel) \
+        if (class_getInstanceMethod(nsApplicationClass, origSel)) { \
+            BOOL swizzleResult = WCSwizzleMethod(nsApplicationClass, origSel, newSel); \
+            success &= swizzleResult; \
+            if (!swizzleResult) { \
+                WCLogWarning(@"Failed to swizzle %@ in NSApplication", NSStringFromSelector(origSel)); \
+            } else { \
+                WCLogDebug(@"Successfully swizzled %@ in NSApplication", NSStringFromSelector(origSel)); \
+            } \
+        } else { \
+            WCLogInfo(@"Method %@ not found in NSApplication, skipping swizzle", NSStringFromSelector(origSel)); \
+        }
+
+    // Swizzle methods that exist
+    SAFE_SWIZZLE(@selector(activationPolicy), @selector(wc_activationPolicy));
+    SAFE_SWIZZLE(@selector(setActivationPolicy:), @selector(wc_setActivationPolicy:));
+    SAFE_SWIZZLE(@selector(presentationOptions), @selector(wc_presentationOptions));
+    SAFE_SWIZZLE(@selector(setPresentationOptions:), @selector(wc_setPresentationOptions:));
+    SAFE_SWIZZLE(@selector(isHidden), @selector(wc_isHidden));
+    SAFE_SWIZZLE(@selector(setHidden:), @selector(wc_setHidden:));
+    SAFE_SWIZZLE(@selector(isActive), @selector(wc_isActive));
+    SAFE_SWIZZLE(@selector(activateIgnoringOtherApps:), @selector(wc_activateIgnoringOtherApps:));
+    SAFE_SWIZZLE(@selector(orderFrontStandardAboutPanel:), @selector(wc_orderFrontStandardAboutPanel:));
+    SAFE_SWIZZLE(@selector(hide:), @selector(wc_hide:));
+    SAFE_SWIZZLE(@selector(unhide:), @selector(wc_unhide:));
+
+    #undef SAFE_SWIZZLE
 
     if (success) {
         WCLogInfo(@"NSApplication interceptor installed successfully");
+        gInstalled = YES;
     } else {
         WCLogError(@"Failed to install NSApplication interceptor");
     }

@@ -1,0 +1,108 @@
+[2025-05-09 08:38:38 +0000] WindowControlInjector dylib loaded
+Environment variables:
+LC_TERMINAL=iTerm2
+__CFBundleIdentifier=com.microsoft.VSCode
+ITERM_PROFILE=Hotkey Window
+TERM=xterm-256color
+USER=me
+ORIGINAL_XDG_CURRENT_DESKTOP=undefined
+PATH=/opt/local/bin:/opt/local/sbin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/Library/Apple/usr/bin:/Applications/Wireshark.app/Contents/MacOS:/Applications/Little Snitch.app/Contents/Components:/usr/local/go/bin:/opt/local/bin:/opt/local/sbin:/Users/me/.cargo/bin:/Users/me/.local/bin:/Applications/iTerm.app/Contents/Resources/utilities:/Users/me/.lmstudio/bin:/Users/me/depot_tools:/Users/me/.lmstudio/bin:/Users/me/depot_tools
+VSCODE_GIT_ASKPASS_EXTRA_ARGS=
+SHELL=/bin/zsh
+TERM_SESSION_ID=w0t1p0:8877D2C5-A7F5-48CF-A538-9A40C4521850
+HOMEBREW_PREFIX=/opt/homebrew
+VSCODE_GIT_IPC_HANDLE=/var/folders/g3/zxrmhnjs0vz_sdp3_z0zry_w0000gn/T/vscode-git-7c9a5ac534.sock
+VSCODE_PROFILE_INITIALIZED=1
+HOMEBREW_REPOSITORY=/opt/homebrew
+SHLVL=3
+__CF_USER_TEXT_ENCODING=0x1F5:0x0:0x0
+INFOPATH=/opt/homebrew/share/info:/opt/homebrew/share/info:
+VSCODE_GIT_ASKPASS_MAIN=/Applications/Visual Studio Code.app/Contents/Resources/app/extensions/git/dist/askpass-main.js
+TMPDIR=/var/folders/g3/zxrmhnjs0vz_sdp3_z0zry_w0000gn/T/
+ZDOTDIR=/Users/me
+PWD=/Users/me/WCI
+TERM_PROGRAM=vscode
+MallocNanoZone=0
+ITERM_SESSION_ID=w0t1p0:8877D2C5-A7F5-48CF-A538-9A40C4521850
+_=/Users/me/WCI/./build/injector
+HOMEBREW_CELLAR=/opt/homebrew/Cellar
+COLORFGBG=15;0
+TERM_FEATURES=T3LrMSc7UUw9Ts3BFGsSyHNoSxF
+LANG=ja_JP.UTF-8
+XPC_SERVICE_NAME=0
+GIT_ASKPASS=/Applications/Visual Studio Code.app/Contents/Resources/app/extensions/git/dist/askpass.sh
+VSCODE_GIT_ASKPASS_NODE=/Applications/Visual Studio Code.app/Contents/Frameworks/Code Helper (Plugin).app/Contents/MacOS/Code Helper (Plugin)
+LC_TERMINAL_VERSION=3.5.13
+VSCODE_INJECTION=1
+COMMAND_MODE=unix2003
+TERM_PROGRAM_VERSION=1.99.3
+TERMINFO_DIRS=/Applications/iTerm.app/Contents/Resources/terminfo:/usr/share/terminfo
+XPC_FLAGS=0x0
+SSH_AUTH_SOCK=/private/tmp/com.apple.launchd.FGjE2AQSMh/Listeners
+LOGNAME=me
+HOME=/Users/me
+COLORTERM=truecolor
+OLDPWD=/Users/me/WCI
+USER_ZDOTDIR=/Users/me
+Checking for profiles in environment variables...
+No profiles found in environment variables
+Checking for property overrides in environment variables...
+No property overrides found in environment variables
+WindowControlInjector initialization completed
+[2025-05-09 08:38:38 +0000] WindowControlInjector dylib loaded
+Environment variables:
+HOMEBREW_REPOSITORY=/opt/homebrew
+PWD=/Users/me/WCI
+ITERM_SESSION_ID=w0t1p0:8877D2C5-A7F5-48CF-A538-9A40C4521850
+TERM_PROGRAM_VERSION=1.99.3
+VSCODE_GIT_IPC_HANDLE=/var/folders/g3/zxrmhnjs0vz_sdp3_z0zry_w0000gn/T/vscode-git-7c9a5ac534.sock
+ITERM_PROFILE=Hotkey Window
+MallocNanoZone=0
+HOME=/Users/me
+SHELL=/bin/zsh
+TMPDIR=/var/folders/g3/zxrmhnjs0vz_sdp3_z0zry_w0000gn/T/
+USER=me
+__CFBundleIdentifier=com.microsoft.VSCode
+TERM_PROGRAM=vscode
+VSCODE_GIT_ASKPASS_NODE=/Applications/Visual Studio Code.app/Contents/Frameworks/Code Helper (Plugin).app/Contents/MacOS/Code Helper (Plugin)
+COLORTERM=truecolor
+HOMEBREW_CELLAR=/opt/homebrew/Cellar
+TERM_SESSION_ID=w0t1p0:8877D2C5-A7F5-48CF-A538-9A40C4521850
+SSH_AUTH_SOCK=/private/tmp/com.apple.launchd.FGjE2AQSMh/Listeners
+LOGNAME=me
+PATH=/opt/local/bin:/opt/local/sbin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/Library/Apple/usr/bin:/Applications/Wireshark.app/Contents/MacOS:/Applications/Little Snitch.app/Contents/Components:/usr/local/go/bin:/opt/local/bin:/opt/local/sbin:/Users/me/.cargo/bin:/Users/me/.local/bin:/Applications/iTerm.app/Contents/Resources/utilities:/Users/me/.lmstudio/bin:/Users/me/depot_tools:/Users/me/.lmstudio/bin:/Users/me/depot_tools
+VSCODE_GIT_ASKPASS_MAIN=/Applications/Visual Studio Code.app/Contents/Resources/app/extensions/git/dist/askpass-main.js
+SHLVL=3
+OLDPWD=/Users/me/WCI
+TERMINFO_DIRS=/Applications/iTerm.app/Contents/Resources/terminfo:/usr/share/terminfo
+__CF_USER_TEXT_ENCODING=0x1F5:0x0:0x0
+_=/Users/me/WCI/./build/injector
+TERM_FEATURES=T3LrMSc7UUw9Ts3BFGsSyHNoSxF
+XPC_FLAGS=0x0
+COMMAND_MODE=unix2003
+HOMEBREW_PREFIX=/opt/homebrew
+VSCODE_PROFILE_INITIALIZED=1
+DYLD_INSERT_LIBRARIES=/Users/me/WCI/build/lib/libwindow_control.dylib
+LANG=ja_JP.UTF-8
+WCI_PROFILES=invisible,stealth,unfocusable,click-through
+ZDOTDIR=/Users/me
+LC_TERMINAL=iTerm2
+LC_TERMINAL_VERSION=3.5.13
+VSCODE_INJECTION=1
+GIT_ASKPASS=/Applications/Visual Studio Code.app/Contents/Resources/app/extensions/git/dist/askpass.sh
+INFOPATH=/opt/homebrew/share/info:/opt/homebrew/share/info:
+USER_ZDOTDIR=/Users/me
+COLORFGBG=15;0
+TERM=xterm-256color
+ORIGINAL_XDG_CURRENT_DESKTOP=undefined
+XPC_SERVICE_NAME=0
+VSCODE_GIT_ASKPASS_EXTRA_ARGS=
+Checking for profiles in environment variables...
+Found profiles: invisible,stealth,unfocusable,click-through
+Applying profile: invisible
+Applying profile: stealth
+Applying profile: unfocusable
+Applying profile: click-through
+Checking for property overrides in environment variables...
+No property overrides found in environment variables
+WindowControlInjector initialization completed

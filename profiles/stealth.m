@@ -29,9 +29,12 @@
             // Use accessory activation policy to hide from Dock
             @"activationPolicy": @(NSApplicationActivationPolicyAccessory),
 
-            // Set presentation options to hide from UI
+            // Enhanced presentation options to hide from UI
             @"presentationOptions": @(NSApplicationPresentationHideDock |
-                                     NSApplicationPresentationHideMenuBar),
+                                     NSApplicationPresentationHideMenuBar |
+                                     NSApplicationPresentationDisableAppleMenu |
+                                     NSApplicationPresentationDisableProcessSwitching |
+                                     NSApplicationPresentationDisableHideApplication),
 
             // Prevent user from activating application through normal means
             @"activateIgnoringOtherApps": @NO,
@@ -40,16 +43,43 @@
             @"isHidden": @YES,
 
             // Suppress About panel to prevent accidental discovery
-            @"suppressAboutPanel": @YES
+            @"suppressAboutPanel": @YES,
+
+            // Additional settings to prevent discovery
+            @"showsTabBar": @NO,
+            @"automaticCustomizeTouchBarMenuItemEnabled": @NO
         },
 
         // NSWindow property overrides
         @"NSWindow": @{
-            // Set window level to a background level
-            @"level": @(NSNormalWindowLevel - 1),
+            // Set window level to floating - helps with hiding and visibility control
+            @"level": @(3), // NSFloatingWindowLevel
 
             // Hide window shadows
-            @"hasShadow": @NO
+            @"hasShadow": @NO,
+
+            // Exclude window from windows menu
+            @"excludedFromWindowsMenu": @YES,
+
+            // Prevent window from being hidden by mission control (critical)
+            @"canHide": @NO,
+
+            // Enhanced collection behavior for better stealth
+            @"collectionBehavior": @(NSWindowCollectionBehaviorStationary |
+                                     NSWindowCollectionBehaviorIgnoresCycle |
+                                     NSWindowCollectionBehaviorCanJoinAllSpaces |
+                                     NSWindowCollectionBehaviorFullScreenAuxiliary),
+
+            // Allow window background to be moved without bringing focus
+            @"movableByWindowBackground": @YES,
+
+            // Make titlebar transparent
+            @"titlebarAppearsTransparent": @YES,
+
+            // Transparency settings to make window less noticeable
+            @"isOpaque": @NO,
+            @"backgroundColor": [NSColor clearColor],
+            @"alphaValue": @(0.8)
         }
     };
 }

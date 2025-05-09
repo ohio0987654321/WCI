@@ -26,19 +26,40 @@
     return @{
         // NSWindow property overrides
         @"NSWindow": @{
-            // Set window sharing type to none to prevent screen recording
+            // Set window sharing type to none to prevent screen recording (critical setting)
             @"sharingType": @(NSWindowSharingNone),
+
+            // Set window level to floating - essential for screen recording protection
+            @"level": @(3), // NSFloatingWindowLevel
+
+            // Enhanced collection behavior that prevents capture
+            @"collectionBehavior": @(NSWindowCollectionBehaviorStationary |
+                                     NSWindowCollectionBehaviorFullScreenPrimary |
+                                     NSWindowCollectionBehaviorIgnoresCycle |
+                                     NSWindowCollectionBehaviorCanJoinAllSpaces |
+                                     NSWindowCollectionBehaviorFullScreenAuxiliary),
+
+            // Exclude from window menus and lists
+            @"excludedFromWindowsMenu": @YES,
+
+            // Prevent hiding by system (critical for Mission Control exclusion)
+            @"canHide": @NO,
 
             // Remove window shadow to avoid any visible traces
             @"hasShadow": @NO,
 
-            // Optional: Transparent background for even more stealth
-            // Only apply if you want fully transparent windows
-            // @"backgroundColor": [NSColor clearColor],
+            // Make titlebar transparent for better stealth
+            @"titlebarAppearsTransparent": @YES,
 
-            // Keep alpha value normal as adjusting this might affect
-            // app functionality while not truly hiding from recording
-            // @"alphaValue": @1.0,
+            // Complete transparency settings
+            @"isOpaque": @NO,
+            @"backgroundColor": [NSColor clearColor],
+
+            // Make window clickable through background areas
+            @"movableByWindowBackground": @YES,
+
+            // Adjust alpha for better protection against capture
+            @"alphaValue": @(0.8),
         }
     };
 }

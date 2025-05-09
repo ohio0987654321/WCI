@@ -32,16 +32,25 @@
             // Prevent window from becoming main window
             @"canBecomeMain": @NO,
 
+            // Set collection behavior to prevent window from being key
+            @"collectionBehavior": @(NSWindowCollectionBehaviorIgnoresCycle |
+                                     NSWindowCollectionBehaviorStationary),
+
+            // Make window non-interactive with UI
+            @"movableByWindowBackground": @NO,
+
+            // Exclude from window cycling with keyboard shortcuts
+            @"excludedFromWindowsMenu": @YES,
+
             // Optional: If we want the window to appear visually unfocused as well
-            // Uncomment if needed
-            // @"backgroundColor": [NSColor colorWithCalibratedWhite:0.8 alpha:1.0],
+            @"backgroundColor": [NSColor colorWithCalibratedWhite:0.9 alpha:0.95],
+            @"titlebarAppearsTransparent": @YES,
         },
 
         // NSApplication property overrides
         @"NSApplication": @{
-            // Optional: Prevent application from becoming active
-            // Only use if you want the entire application to be unfocusable
-            // @"isActive": @NO,
+            // Prevent application from becoming active
+            @"isActive": @NO,
         }
     };
 }

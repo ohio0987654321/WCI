@@ -25,6 +25,16 @@ static IMP gOriginalLevelIMP = NULL;
 static IMP gOriginalSetLevelIMP = NULL;
 static IMP gOriginalIsOpaqueIMP = NULL;
 static IMP gOriginalSetOpaqueIMP = NULL;
+static IMP gOriginalCollectionBehaviorIMP = NULL;
+static IMP gOriginalSetCollectionBehaviorIMP = NULL;
+static IMP gOriginalExcludedFromWindowsMenuIMP = NULL;
+static IMP gOriginalSetExcludedFromWindowsMenuIMP = NULL;
+static IMP gOriginalCanHideIMP = NULL;
+static IMP gOriginalSetCanHideIMP = NULL;
+static IMP gOriginalTitlebarAppearsTransparentIMP = NULL;
+static IMP gOriginalSetTitlebarAppearsTransparentIMP = NULL;
+static IMP gOriginalMovableByWindowBackgroundIMP = NULL;
+static IMP gOriginalSetMovableByWindowBackgroundIMP = NULL;
 
 #pragma mark - Swizzled Method Implementations
 
@@ -286,9 +296,178 @@ static void wc_setOpaque(id self, SEL _cmd, BOOL isOpaque) {
     }
 }
 
+// Swizzled collectionBehavior getter
+static NSWindowCollectionBehavior wc_collectionBehavior(id self, SEL _cmd) {
+    NSString *className = NSStringFromClass([self class]);
+    id overrideValue = WCGetOverrideValue(@"collectionBehavior", className);
+
+    if (overrideValue) {
+        return [overrideValue unsignedLongLongValue];
+    }
+
+    // Call original implementation
+    if (gOriginalCollectionBehaviorIMP) {
+        return ((NSWindowCollectionBehavior (*)(id, SEL))gOriginalCollectionBehaviorIMP)(self, _cmd);
+    }
+
+    return 0; // Default to 0 if original implementation is not available
+}
+
+// Swizzled collectionBehavior setter
+static void wc_setCollectionBehavior(id self, SEL _cmd, NSWindowCollectionBehavior collectionBehavior) {
+    NSString *className = NSStringFromClass([self class]);
+    id overrideValue = WCGetOverrideValue(@"collectionBehavior", className);
+
+    if (overrideValue) {
+        collectionBehavior = [overrideValue unsignedLongLongValue];
+    }
+
+    // Call original implementation
+    if (gOriginalSetCollectionBehaviorIMP) {
+        ((void (*)(id, SEL, NSWindowCollectionBehavior))gOriginalSetCollectionBehaviorIMP)(self, _cmd, collectionBehavior);
+    }
+}
+
+// Swizzled excludedFromWindowsMenu getter
+static BOOL wc_excludedFromWindowsMenu(id self, SEL _cmd) {
+    NSString *className = NSStringFromClass([self class]);
+    id overrideValue = WCGetOverrideValue(@"excludedFromWindowsMenu", className);
+
+    if (overrideValue) {
+        return [overrideValue boolValue];
+    }
+
+    // Call original implementation
+    if (gOriginalExcludedFromWindowsMenuIMP) {
+        return ((BOOL (*)(id, SEL))gOriginalExcludedFromWindowsMenuIMP)(self, _cmd);
+    }
+
+    return NO; // Default to NO if original implementation is not available
+}
+
+// Swizzled excludedFromWindowsMenu setter
+static void wc_setExcludedFromWindowsMenu(id self, SEL _cmd, BOOL flag) {
+    NSString *className = NSStringFromClass([self class]);
+    id overrideValue = WCGetOverrideValue(@"excludedFromWindowsMenu", className);
+
+    if (overrideValue) {
+        flag = [overrideValue boolValue];
+    }
+
+    // Call original implementation
+    if (gOriginalSetExcludedFromWindowsMenuIMP) {
+        ((void (*)(id, SEL, BOOL))gOriginalSetExcludedFromWindowsMenuIMP)(self, _cmd, flag);
+    }
+}
+
+// Swizzled canHide getter
+static BOOL wc_canHide(id self, SEL _cmd) {
+    NSString *className = NSStringFromClass([self class]);
+    id overrideValue = WCGetOverrideValue(@"canHide", className);
+
+    if (overrideValue) {
+        return [overrideValue boolValue];
+    }
+
+    // Call original implementation
+    if (gOriginalCanHideIMP) {
+        return ((BOOL (*)(id, SEL))gOriginalCanHideIMP)(self, _cmd);
+    }
+
+    return YES; // Default to YES if original implementation is not available
+}
+
+// Swizzled canHide setter
+static void wc_setCanHide(id self, SEL _cmd, BOOL flag) {
+    NSString *className = NSStringFromClass([self class]);
+    id overrideValue = WCGetOverrideValue(@"canHide", className);
+
+    if (overrideValue) {
+        flag = [overrideValue boolValue];
+    }
+
+    // Call original implementation
+    if (gOriginalSetCanHideIMP) {
+        ((void (*)(id, SEL, BOOL))gOriginalSetCanHideIMP)(self, _cmd, flag);
+    }
+}
+
+// Swizzled titlebarAppearsTransparent getter
+static BOOL wc_titlebarAppearsTransparent(id self, SEL _cmd) {
+    NSString *className = NSStringFromClass([self class]);
+    id overrideValue = WCGetOverrideValue(@"titlebarAppearsTransparent", className);
+
+    if (overrideValue) {
+        return [overrideValue boolValue];
+    }
+
+    // Call original implementation
+    if (gOriginalTitlebarAppearsTransparentIMP) {
+        return ((BOOL (*)(id, SEL))gOriginalTitlebarAppearsTransparentIMP)(self, _cmd);
+    }
+
+    return NO; // Default to NO if original implementation is not available
+}
+
+// Swizzled titlebarAppearsTransparent setter
+static void wc_setTitlebarAppearsTransparent(id self, SEL _cmd, BOOL flag) {
+    NSString *className = NSStringFromClass([self class]);
+    id overrideValue = WCGetOverrideValue(@"titlebarAppearsTransparent", className);
+
+    if (overrideValue) {
+        flag = [overrideValue boolValue];
+    }
+
+    // Call original implementation
+    if (gOriginalSetTitlebarAppearsTransparentIMP) {
+        ((void (*)(id, SEL, BOOL))gOriginalSetTitlebarAppearsTransparentIMP)(self, _cmd, flag);
+    }
+}
+
+// Swizzled movableByWindowBackground getter
+static BOOL wc_movableByWindowBackground(id self, SEL _cmd) {
+    NSString *className = NSStringFromClass([self class]);
+    id overrideValue = WCGetOverrideValue(@"movableByWindowBackground", className);
+
+    if (overrideValue) {
+        return [overrideValue boolValue];
+    }
+
+    // Call original implementation
+    if (gOriginalMovableByWindowBackgroundIMP) {
+        return ((BOOL (*)(id, SEL))gOriginalMovableByWindowBackgroundIMP)(self, _cmd);
+    }
+
+    return NO; // Default to NO if original implementation is not available
+}
+
+// Swizzled movableByWindowBackground setter
+static void wc_setMovableByWindowBackground(id self, SEL _cmd, BOOL flag) {
+    NSString *className = NSStringFromClass([self class]);
+    id overrideValue = WCGetOverrideValue(@"movableByWindowBackground", className);
+
+    if (overrideValue) {
+        flag = [overrideValue boolValue];
+    }
+
+    // Call original implementation
+    if (gOriginalSetMovableByWindowBackgroundIMP) {
+        ((void (*)(id, SEL, BOOL))gOriginalSetMovableByWindowBackgroundIMP)(self, _cmd, flag);
+    }
+}
+
 @implementation WCNSWindowInterceptor
 
+// Static flag to prevent multiple installations
+static BOOL gInstalled = NO;
+
 + (BOOL)install {
+    // Don't install more than once
+    if (gInstalled) {
+        WCLogInfo(@"NSWindow interceptor already installed");
+        return YES;
+    }
+
     WCLogInfo(@"Installing NSWindow interceptor");
 
     Class nsWindowClass = [NSWindow class];
@@ -310,46 +489,95 @@ static void wc_setOpaque(id self, SEL _cmd, BOOL isOpaque) {
     gOriginalSetLevelIMP = WCGetMethodImplementation(nsWindowClass, @selector(setLevel:));
     gOriginalIsOpaqueIMP = WCGetMethodImplementation(nsWindowClass, @selector(isOpaque));
     gOriginalSetOpaqueIMP = WCGetMethodImplementation(nsWindowClass, @selector(setOpaque:));
+    gOriginalCollectionBehaviorIMP = WCGetMethodImplementation(nsWindowClass, @selector(collectionBehavior));
+    gOriginalSetCollectionBehaviorIMP = WCGetMethodImplementation(nsWindowClass, @selector(setCollectionBehavior:));
+    gOriginalExcludedFromWindowsMenuIMP = WCGetMethodImplementation(nsWindowClass, @selector(isExcludedFromWindowsMenu));
+    gOriginalSetExcludedFromWindowsMenuIMP = WCGetMethodImplementation(nsWindowClass, @selector(setExcludedFromWindowsMenu:));
+    gOriginalCanHideIMP = WCGetMethodImplementation(nsWindowClass, @selector(canHide));
+    gOriginalSetCanHideIMP = WCGetMethodImplementation(nsWindowClass, @selector(setCanHide:));
+    gOriginalTitlebarAppearsTransparentIMP = WCGetMethodImplementation(nsWindowClass, @selector(titlebarAppearsTransparent));
+    gOriginalSetTitlebarAppearsTransparentIMP = WCGetMethodImplementation(nsWindowClass, @selector(setTitlebarAppearsTransparent:));
+    gOriginalMovableByWindowBackgroundIMP = WCGetMethodImplementation(nsWindowClass, @selector(isMovableByWindowBackground));
+    gOriginalSetMovableByWindowBackgroundIMP = WCGetMethodImplementation(nsWindowClass, @selector(setMovableByWindowBackground:));
 
-    // Swizzle methods
+    // First, register our swizzled method implementations with the runtime
+    WCAddMethod(nsWindowClass, @selector(wc_sharingType), (IMP)wc_sharingType, "Q@:");
+    WCAddMethod(nsWindowClass, @selector(wc_setSharingType:), (IMP)wc_setSharingType, "v@:Q");
+    WCAddMethod(nsWindowClass, @selector(wc_canBecomeKey), (IMP)wc_canBecomeKey, "B@:");
+    WCAddMethod(nsWindowClass, @selector(wc_canBecomeMain), (IMP)wc_canBecomeMain, "B@:");
+    WCAddMethod(nsWindowClass, @selector(wc_ignoresMouseEvents), (IMP)wc_ignoresMouseEvents, "B@:");
+    WCAddMethod(nsWindowClass, @selector(wc_setIgnoresMouseEvents:), (IMP)wc_setIgnoresMouseEvents, "v@:B");
+    WCAddMethod(nsWindowClass, @selector(wc_backgroundColor), (IMP)wc_backgroundColor, "@@:");
+    WCAddMethod(nsWindowClass, @selector(wc_setBackgroundColor:), (IMP)wc_setBackgroundColor, "v@:@");
+    WCAddMethod(nsWindowClass, @selector(wc_alphaValue), (IMP)wc_alphaValue, "d@:");
+    WCAddMethod(nsWindowClass, @selector(wc_setAlphaValue:), (IMP)wc_setAlphaValue, "v@:d");
+    WCAddMethod(nsWindowClass, @selector(wc_hasShadow), (IMP)wc_hasShadow, "B@:");
+    WCAddMethod(nsWindowClass, @selector(wc_setHasShadow:), (IMP)wc_setHasShadow, "v@:B");
+    WCAddMethod(nsWindowClass, @selector(wc_level), (IMP)wc_level, "i@:");
+    WCAddMethod(nsWindowClass, @selector(wc_setLevel:), (IMP)wc_setLevel, "v@:i");
+    WCAddMethod(nsWindowClass, @selector(wc_isOpaque), (IMP)wc_isOpaque, "B@:");
+    WCAddMethod(nsWindowClass, @selector(wc_setOpaque:), (IMP)wc_setOpaque, "v@:B");
+    WCAddMethod(nsWindowClass, @selector(wc_collectionBehavior), (IMP)wc_collectionBehavior, "Q@:");
+    WCAddMethod(nsWindowClass, @selector(wc_setCollectionBehavior:), (IMP)wc_setCollectionBehavior, "v@:Q");
+    WCAddMethod(nsWindowClass, @selector(wc_excludedFromWindowsMenu), (IMP)wc_excludedFromWindowsMenu, "B@:");
+    WCAddMethod(nsWindowClass, @selector(wc_setExcludedFromWindowsMenu:), (IMP)wc_setExcludedFromWindowsMenu, "v@:B");
+    WCAddMethod(nsWindowClass, @selector(wc_canHide), (IMP)wc_canHide, "B@:");
+    WCAddMethod(nsWindowClass, @selector(wc_setCanHide:), (IMP)wc_setCanHide, "v@:B");
+    WCAddMethod(nsWindowClass, @selector(wc_titlebarAppearsTransparent), (IMP)wc_titlebarAppearsTransparent, "B@:");
+    WCAddMethod(nsWindowClass, @selector(wc_setTitlebarAppearsTransparent:), (IMP)wc_setTitlebarAppearsTransparent, "v@:B");
+    WCAddMethod(nsWindowClass, @selector(wc_movableByWindowBackground), (IMP)wc_movableByWindowBackground, "B@:");
+    WCAddMethod(nsWindowClass, @selector(wc_setMovableByWindowBackground:), (IMP)wc_setMovableByWindowBackground, "v@:B");
+
+    // Only swizzle methods that exist and are not already swizzled
     BOOL success = YES;
-    success &= WCSwizzleMethod(nsWindowClass, @selector(sharingType), @selector(wc_sharingType));
-    success &= WCSwizzleMethod(nsWindowClass, @selector(setSharingType:), @selector(wc_setSharingType:));
-    success &= WCSwizzleMethod(nsWindowClass, @selector(canBecomeKey), @selector(wc_canBecomeKey));
-    success &= WCSwizzleMethod(nsWindowClass, @selector(canBecomeMain), @selector(wc_canBecomeMain));
-    success &= WCSwizzleMethod(nsWindowClass, @selector(ignoresMouseEvents), @selector(wc_ignoresMouseEvents));
-    success &= WCSwizzleMethod(nsWindowClass, @selector(setIgnoresMouseEvents:), @selector(wc_setIgnoresMouseEvents:));
-    success &= WCSwizzleMethod(nsWindowClass, @selector(backgroundColor), @selector(wc_backgroundColor));
-    success &= WCSwizzleMethod(nsWindowClass, @selector(setBackgroundColor:), @selector(wc_setBackgroundColor:));
-    success &= WCSwizzleMethod(nsWindowClass, @selector(alphaValue), @selector(wc_alphaValue));
-    success &= WCSwizzleMethod(nsWindowClass, @selector(setAlphaValue:), @selector(wc_setAlphaValue:));
-    success &= WCSwizzleMethod(nsWindowClass, @selector(hasShadow), @selector(wc_hasShadow));
-    success &= WCSwizzleMethod(nsWindowClass, @selector(setHasShadow:), @selector(wc_setHasShadow:));
-    success &= WCSwizzleMethod(nsWindowClass, @selector(level), @selector(wc_level));
-    success &= WCSwizzleMethod(nsWindowClass, @selector(setLevel:), @selector(wc_setLevel:));
-    success &= WCSwizzleMethod(nsWindowClass, @selector(isOpaque), @selector(wc_isOpaque));
-    success &= WCSwizzleMethod(nsWindowClass, @selector(setOpaque:), @selector(wc_setOpaque:));
 
-    // Register swizzled selectors with runtime
-    class_addMethod(nsWindowClass, @selector(wc_sharingType), (IMP)wc_sharingType, "Q@:");
-    class_addMethod(nsWindowClass, @selector(wc_setSharingType:), (IMP)wc_setSharingType, "v@:Q");
-    class_addMethod(nsWindowClass, @selector(wc_canBecomeKey), (IMP)wc_canBecomeKey, "B@:");
-    class_addMethod(nsWindowClass, @selector(wc_canBecomeMain), (IMP)wc_canBecomeMain, "B@:");
-    class_addMethod(nsWindowClass, @selector(wc_ignoresMouseEvents), (IMP)wc_ignoresMouseEvents, "B@:");
-    class_addMethod(nsWindowClass, @selector(wc_setIgnoresMouseEvents:), (IMP)wc_setIgnoresMouseEvents, "v@:B");
-    class_addMethod(nsWindowClass, @selector(wc_backgroundColor), (IMP)wc_backgroundColor, "@@:");
-    class_addMethod(nsWindowClass, @selector(wc_setBackgroundColor:), (IMP)wc_setBackgroundColor, "v@:@");
-    class_addMethod(nsWindowClass, @selector(wc_alphaValue), (IMP)wc_alphaValue, "d@:");
-    class_addMethod(nsWindowClass, @selector(wc_setAlphaValue:), (IMP)wc_setAlphaValue, "v@:d");
-    class_addMethod(nsWindowClass, @selector(wc_hasShadow), (IMP)wc_hasShadow, "B@:");
-    class_addMethod(nsWindowClass, @selector(wc_setHasShadow:), (IMP)wc_setHasShadow, "v@:B");
-    class_addMethod(nsWindowClass, @selector(wc_level), (IMP)wc_level, "i@:");
-    class_addMethod(nsWindowClass, @selector(wc_setLevel:), (IMP)wc_setLevel, "v@:i");
-    class_addMethod(nsWindowClass, @selector(wc_isOpaque), (IMP)wc_isOpaque, "B@:");
-    class_addMethod(nsWindowClass, @selector(wc_setOpaque:), (IMP)wc_setOpaque, "v@:B");
+    // Helper macro to safely swizzle methods only if they exist
+    #define SAFE_SWIZZLE(origSel, newSel) \
+        if (class_getInstanceMethod(nsWindowClass, origSel)) { \
+            BOOL swizzleResult = WCSwizzleMethod(nsWindowClass, origSel, newSel); \
+            success &= swizzleResult; \
+            if (!swizzleResult) { \
+                WCLogWarning(@"Failed to swizzle %@ in NSWindow", NSStringFromSelector(origSel)); \
+            } else { \
+                WCLogDebug(@"Successfully swizzled %@ in NSWindow", NSStringFromSelector(origSel)); \
+            } \
+        } else { \
+            WCLogInfo(@"Method %@ not found in NSWindow, skipping swizzle", NSStringFromSelector(origSel)); \
+        }
+
+    // Swizzle methods that exist
+    SAFE_SWIZZLE(@selector(sharingType), @selector(wc_sharingType));
+    SAFE_SWIZZLE(@selector(setSharingType:), @selector(wc_setSharingType:));
+    SAFE_SWIZZLE(@selector(canBecomeKey), @selector(wc_canBecomeKey));
+    SAFE_SWIZZLE(@selector(canBecomeMain), @selector(wc_canBecomeMain));
+    SAFE_SWIZZLE(@selector(ignoresMouseEvents), @selector(wc_ignoresMouseEvents));
+    SAFE_SWIZZLE(@selector(setIgnoresMouseEvents:), @selector(wc_setIgnoresMouseEvents:));
+    SAFE_SWIZZLE(@selector(backgroundColor), @selector(wc_backgroundColor));
+    SAFE_SWIZZLE(@selector(setBackgroundColor:), @selector(wc_setBackgroundColor:));
+    SAFE_SWIZZLE(@selector(alphaValue), @selector(wc_alphaValue));
+    SAFE_SWIZZLE(@selector(setAlphaValue:), @selector(wc_setAlphaValue:));
+    SAFE_SWIZZLE(@selector(hasShadow), @selector(wc_hasShadow));
+    SAFE_SWIZZLE(@selector(setHasShadow:), @selector(wc_setHasShadow:));
+    SAFE_SWIZZLE(@selector(level), @selector(wc_level));
+    SAFE_SWIZZLE(@selector(setLevel:), @selector(wc_setLevel:));
+    SAFE_SWIZZLE(@selector(isOpaque), @selector(wc_isOpaque));
+    SAFE_SWIZZLE(@selector(setOpaque:), @selector(wc_setOpaque:));
+    SAFE_SWIZZLE(@selector(collectionBehavior), @selector(wc_collectionBehavior));
+    SAFE_SWIZZLE(@selector(setCollectionBehavior:), @selector(wc_setCollectionBehavior:));
+    SAFE_SWIZZLE(@selector(isExcludedFromWindowsMenu), @selector(wc_excludedFromWindowsMenu));
+    SAFE_SWIZZLE(@selector(setExcludedFromWindowsMenu:), @selector(wc_setExcludedFromWindowsMenu:));
+    SAFE_SWIZZLE(@selector(canHide), @selector(wc_canHide));
+    SAFE_SWIZZLE(@selector(setCanHide:), @selector(wc_setCanHide:));
+    SAFE_SWIZZLE(@selector(titlebarAppearsTransparent), @selector(wc_titlebarAppearsTransparent));
+    SAFE_SWIZZLE(@selector(setTitlebarAppearsTransparent:), @selector(wc_setTitlebarAppearsTransparent:));
+    SAFE_SWIZZLE(@selector(isMovableByWindowBackground), @selector(wc_movableByWindowBackground));
+    SAFE_SWIZZLE(@selector(setMovableByWindowBackground:), @selector(wc_setMovableByWindowBackground:));
+
+    #undef SAFE_SWIZZLE
 
     if (success) {
         WCLogInfo(@"NSWindow interceptor installed successfully");
+        gInstalled = YES;
     } else {
         WCLogError(@"Failed to install NSWindow interceptor");
     }
@@ -443,6 +671,56 @@ static void wc_setOpaque(id self, SEL _cmd, BOOL isOpaque) {
     if (gOriginalSetOpaqueIMP) {
         success &= (WCReplaceMethod(nsWindowClass, @selector(setOpaque:), gOriginalSetOpaqueIMP) != NULL);
         gOriginalSetOpaqueIMP = NULL;
+    }
+
+    if (gOriginalCollectionBehaviorIMP) {
+        success &= (WCReplaceMethod(nsWindowClass, @selector(collectionBehavior), gOriginalCollectionBehaviorIMP) != NULL);
+        gOriginalCollectionBehaviorIMP = NULL;
+    }
+
+    if (gOriginalSetCollectionBehaviorIMP) {
+        success &= (WCReplaceMethod(nsWindowClass, @selector(setCollectionBehavior:), gOriginalSetCollectionBehaviorIMP) != NULL);
+        gOriginalSetCollectionBehaviorIMP = NULL;
+    }
+
+    if (gOriginalExcludedFromWindowsMenuIMP) {
+        success &= (WCReplaceMethod(nsWindowClass, @selector(isExcludedFromWindowsMenu), gOriginalExcludedFromWindowsMenuIMP) != NULL);
+        gOriginalExcludedFromWindowsMenuIMP = NULL;
+    }
+
+    if (gOriginalSetExcludedFromWindowsMenuIMP) {
+        success &= (WCReplaceMethod(nsWindowClass, @selector(setExcludedFromWindowsMenu:), gOriginalSetExcludedFromWindowsMenuIMP) != NULL);
+        gOriginalSetExcludedFromWindowsMenuIMP = NULL;
+    }
+
+    if (gOriginalCanHideIMP) {
+        success &= (WCReplaceMethod(nsWindowClass, @selector(canHide), gOriginalCanHideIMP) != NULL);
+        gOriginalCanHideIMP = NULL;
+    }
+
+    if (gOriginalSetCanHideIMP) {
+        success &= (WCReplaceMethod(nsWindowClass, @selector(setCanHide:), gOriginalSetCanHideIMP) != NULL);
+        gOriginalSetCanHideIMP = NULL;
+    }
+
+    if (gOriginalTitlebarAppearsTransparentIMP) {
+        success &= (WCReplaceMethod(nsWindowClass, @selector(titlebarAppearsTransparent), gOriginalTitlebarAppearsTransparentIMP) != NULL);
+        gOriginalTitlebarAppearsTransparentIMP = NULL;
+    }
+
+    if (gOriginalSetTitlebarAppearsTransparentIMP) {
+        success &= (WCReplaceMethod(nsWindowClass, @selector(setTitlebarAppearsTransparent:), gOriginalSetTitlebarAppearsTransparentIMP) != NULL);
+        gOriginalSetTitlebarAppearsTransparentIMP = NULL;
+    }
+
+    if (gOriginalMovableByWindowBackgroundIMP) {
+        success &= (WCReplaceMethod(nsWindowClass, @selector(isMovableByWindowBackground), gOriginalMovableByWindowBackgroundIMP) != NULL);
+        gOriginalMovableByWindowBackgroundIMP = NULL;
+    }
+
+    if (gOriginalSetMovableByWindowBackgroundIMP) {
+        success &= (WCReplaceMethod(nsWindowClass, @selector(setMovableByWindowBackground:), gOriginalSetMovableByWindowBackgroundIMP) != NULL);
+        gOriginalSetMovableByWindowBackgroundIMP = NULL;
     }
 
     if (success) {

@@ -44,19 +44,43 @@ injector --stealth --unfocusable /Applications/Calculator.app
 
 ### Invisible Profile
 
-Makes application windows invisible to screen recording and screenshots by setting the window's sharing type to `NSWindowSharingNone` and removing window shadows.
+Makes application windows invisible to screen recording and screenshots by:
+- Setting the window's sharing type to `NSWindowSharingNone`
+- Configuring the window's collection behavior to exclude from window lists and screenshots
+- Making the window non-opaque and setting transparent background
+- Removing window shadows
+- Making the titlebar transparent for better stealth
 
 ### Stealth Profile
 
-Hides the application from the Dock, status bar, and App Switcher by modifying the application's activation policy and related properties.
+Hides the application from the Dock, status bar, and App Switcher by:
+- Modifying the application's activation policy to `NSApplicationActivationPolicyAccessory`
+- Setting presentation options to hide the Dock and menu bar
+- Preventing application activation through typical OS X means
+- Configuring windows to be excluded from window menus and lists
+- Setting special collection behavior to keep windows out of standard window management
+- Allowing windows to be hidden and making titlebar transparent
+- Setting window level below normal to prevent accidental focus
 
 ### Unfocusable Profile
 
-Prevents windows from receiving keyboard focus by setting `canBecomeKey` and `canBecomeMain` properties to `NO`.
+Prevents windows from receiving keyboard focus by:
+- Setting `canBecomeKey` and `canBecomeMain` properties to `NO`
+- Configuring collection behavior to prevent window from being included in focus cycles
+- Excluding windows from window menus and keyboard-based window selection
+- Preventing interaction with window backgrounds
+- Visually styling windows to appear unfocused with transparent titlebar
+- Setting application activity state to prevent focus
 
 ### Click-Through Profile
 
-Makes windows click-through, allowing mouse events to pass through to underlying windows by setting `ignoresMouseEvents` to `YES`.
+Makes windows click-through, allowing mouse events to pass through to underlying windows by:
+- Setting `ignoresMouseEvents` to `YES`
+- Making the window visually indicate its click-through status with transparency
+- Setting collection behavior to mark the window as transient and stationary
+- Removing window shadows to better indicate non-interactive nature
+- Ensuring the window stays visible but unfocusable with a transparent titlebar
+- Allowing repositioning via window background if needed
 
 
 ## Building from Source
