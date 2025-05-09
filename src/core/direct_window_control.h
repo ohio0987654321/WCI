@@ -44,6 +44,18 @@
  */
 + (void)applySettingsToAllWindows;
 
+/**
+ * Control whether windows can receive focus and interaction
+ * @param allow YES to allow windows to become key/main, NO to prevent focus
+ */
++ (void)setAllowWindowInteraction:(BOOL)allow;
+
+/**
+ * Get the current window interaction setting
+ * @return YES if windows can receive focus, NO otherwise
+ */
++ (BOOL)allowWindowInteraction;
+
 @end
 
 // These are implementation-only functions declared here to silence warnings

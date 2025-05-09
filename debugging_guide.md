@@ -35,6 +35,67 @@ For manual usage with the injector binary:
 | Focus control | Property-based | Dynamic class creation |
 | Update frequency | One-time | Continuous monitoring |
 
+## Window Interaction Controls
+
+The window interaction feature allows you to control whether protected windows can receive keyboard focus and interact normally, while still maintaining protection against screen recording.
+
+### Window Interaction Modes
+
+By default, windows protected by the direct-control profile can receive keyboard focus for normal interaction while still maintaining protection against screen recording. However, there are scenarios where you might want to disable interaction:
+
+```bash
+# Default: protection with interaction enabled
+./build/injector /Applications/YourApp.app
+
+# Explicitly enable interaction (same as default)
+./build/injector --direct-control --enable-interaction /Applications/YourApp.app
+
+# Disable interaction for maximum security
+./build/injector --direct-control --disable-interaction /Applications/YourApp.app
+```
+
+The default interactive mode allows windows to:
+- Receive keyboard focus
+- Accept text input
+- Respond to keyboard shortcuts
+- Have normal window behavior
+
+While still maintaining:
+- Protection against screen recording
+- Stealth features (if enabled)
+- Other security measures
+
+### When to Disable Interaction
+
+If you want maximum security and don't need to interact with the application, you can disable interaction:
+
+```bash
+# Disable interaction for an application
+./build/injector --disable-interaction /Applications/YourApp.app
+```
+
+This is useful for:
+- Display-only applications that don't need user input
+- Preventing accidental keyboard input
+- Maximum security scenarios
+
+### When to Use Each Mode
+
+| Use Case | Recommended Mode |
+|----------|-----------------|
+| Private viewing of content | Interactive mode disabled |
+| Working with sensitive data | Interactive mode enabled (default) |
+| Background processes | Interactive mode disabled |
+| Active work requiring privacy | Interactive mode enabled (default) |
+
+### Technical Implementation
+
+The window interaction controls work by:
+1. Dynamically creating subclasses of NSWindow
+2. Overriding the `canBecomeKey` and `canBecomeMain` methods
+3. Controlling return values based on the current interaction mode
+4. Using a global flag to toggle between modes
+
 ## Debugging Common Issues
 
 ### Issue: App Crashes on Launch

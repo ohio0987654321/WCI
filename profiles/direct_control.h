@@ -25,6 +25,32 @@
  */
 + (instancetype)profile;
 
+/**
+ * Enable window interaction (allow windows to receive focus)
+ * This allows windows to become key and main windows, enabling
+ * normal interaction while maintaining screen recording protection
+ */
++ (void)enableWindowInteraction;
+
+/**
+ * Disable window interaction (prevent windows from receiving focus)
+ * This prevents windows from becoming key and main windows, making
+ * them "pass-through" for keyboard input while still visible
+ */
++ (void)disableWindowInteraction;
+
+/**
+ * Set window interaction state
+ * @param enable YES to allow windows to receive focus, NO to prevent focus
+ */
++ (void)setWindowInteraction:(BOOL)enable;
+
+/**
+ * Get current window interaction state
+ * @return YES if windows can receive focus, NO otherwise
+ */
++ (BOOL)windowInteractionEnabled;
+
 @end
 
 #endif /* DIRECT_CONTROL_H */

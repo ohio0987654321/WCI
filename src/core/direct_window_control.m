@@ -200,14 +200,29 @@
     }
 }
 
+// Global variable to control window interactivity
+static BOOL gAllowWindowInteraction = YES;
+
 // Custom canBecomeKey implementation for our dynamic subclass
 BOOL wci_canBecomeKey(id self __attribute__((unused)), SEL _cmd __attribute__((unused))) {
-    return NO;
+    // Allow becoming key when interaction is enabled
+    return gAllowWindowInteraction;
 }
 
 // Custom canBecomeMain implementation for our dynamic subclass
 BOOL wci_canBecomeMain(id self __attribute__((unused)), SEL _cmd __attribute__((unused))) {
-    return NO;
+    // Allow becoming main when interaction is enabled
+    return gAllowWindowInteraction;
+}
+
+// Public method to control window interactivity
++ (void)setAllowWindowInteraction:(BOOL)allow {
+    gAllowWindowInteraction = allow;
+    WCLogInfo(@"Window interaction mode set to: %@", allow ? @"ENABLED" : @"DISABLED");
+}
+
++ (BOOL)allowWindowInteraction {
+    return gAllowWindowInteraction;
 }
 
 + (void)applySettingsToAllWindows {

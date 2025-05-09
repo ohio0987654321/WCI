@@ -6,7 +6,7 @@ A macOS utility that uses dylib injection to modify the behavior and appearance 
 
 - **Screen Recording Protection**: Make application windows invisible to screen recording tools
 - **UI Element Hiding**: Hide applications from Dock, status bar, and App Switcher
-- **Focus Control**: Prevent windows from receiving keyboard focus
+- **Focus Control**: Prevent windows from receiving keyboard focus (with optional interactive mode)
 - **Click-Through Support**: Allow clicks to pass through windows
 - **Custom Property Control**: Override specific NSWindow and NSApplication properties
 
@@ -20,17 +20,24 @@ Options:
   --stealth          Hide application from Dock and status bar
   --unfocusable      Prevent windows from receiving focus
   --click-through    Make windows click-through (ignore mouse events)
+  --direct-control   Enhanced control using direct Objective-C messaging (recommended)
   --all              Apply all profiles
+
+Window interaction control:
+  --enable-interaction  Allow windows to receive keyboard focus (while maintaining protection)
+  --disable-interaction Prevent windows from receiving keyboard focus
 
   -v, --verbose      Enable verbose logging
   -h, --help         Show this help message
   --version          Show version information
 ```
 
+**Default Behavior**: Running the injector with just an application path will apply the `direct-control` profile with interaction enabled, giving you both protection from screen recording and normal window usability.
+
 ### Examples
 
 ```bash
-# Apply all profiles automatically (default behavior)
+# Apply direct-control with interaction enabled (default behavior)
 injector /Applications/TextEdit.app
 
 # Make TextEdit invisible to screen recording only
@@ -38,6 +45,12 @@ injector --invisible /Applications/TextEdit.app
 
 # Hide Calculator from the Dock and make it unfocusable
 injector --stealth --unfocusable /Applications/Calculator.app
+
+# Enable advanced protection but allow normal interaction (best of both worlds)
+injector --direct-control --enable-interaction /Applications/Safari.app
+
+# Toggle interaction off for an already-running application
+injector --disable-interaction /Applications/Terminal.app
 ```
 
 ## Profiles
@@ -82,6 +95,43 @@ Makes windows click-through, allowing mouse events to pass through to underlying
 - Ensuring the window stays visible but unfocusable with a transparent titlebar
 - Allowing repositioning via window background if needed
 
+### Direct Control Profile
+
+Provides enhanced window and application control using direct Objective-C messaging:
+- Implements stronger screen recording protection via multiple techniques
+- Creates dynamic window subclasses at runtime for improved behavior control
+- Uses notification observers to detect and protect new windows automatically
+- Periodically reapplies settings to ensure consistent behavior
+- Supports dynamic toggling of window interaction modes
+
+### Window Interaction Control
+
+Controls whether protected windows can receive keyboard focus:
+- `--enable-interaction`: Allow windows to receive keyboard focus while maintaining protection (default)
+- `--disable-interaction`: Prevent windows from receiving keyboard focus
+
+This feature is especially useful when using the direct-control profile, allowing you to:
+1. Work with sensitive content normally (typing, keyboard shortcuts, etc.)
+2. Maintain full protection against screen recording
+3. Toggle interaction on/off as needed without restarting the application
+
+
+## Quick Launch Script
+
+For convenience, a quick launch script is provided:
+
+```bash
+# Launch with default settings (secure and interactive)
+./direct_launch.sh /Applications/Safari.app
+
+# Launch with window interaction enabled
+./direct_launch.sh --interactive /Applications/TextEdit.app
+
+# Launch with window interaction explicitly disabled
+./direct_launch.sh --no-interaction /Applications/Calculator.app
+```
+
+The script automatically builds the injector if needed and applies the direct-control profile.
 
 ## Building from Source
 

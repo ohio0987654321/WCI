@@ -8,6 +8,7 @@
 #import "../include/injector.h"
 #import "../include/profiles.h"
 #import "../src/util/logger.h"
+#import "../profiles/direct_control.h"
 
 // Function prototypes
 void printUsage(void);
@@ -59,6 +60,14 @@ int main(int argc, const char * argv[]) {
                     [profileNames addObject:@"direct-control"];
                 } else if ([arg isEqualToString:@"--all"]) {
                     applyAll = YES;
+                } else if ([arg isEqualToString:@"--enable-interaction"]) {
+                    // Enable window interaction - allows windows to receive focus
+                    WCLogInfo(@"Enabling window interaction");
+                    [WCDirectControlProfile enableWindowInteraction];
+                } else if ([arg isEqualToString:@"--disable-interaction"]) {
+                    // Disable window interaction - prevents windows from receiving focus
+                    WCLogInfo(@"Disabling window interaction");
+                    [WCDirectControlProfile disableWindowInteraction];
                 } else {
                     WCLogError(@"Unknown option: %@", arg);
                     printUsage();
@@ -95,10 +104,19 @@ int main(int argc, const char * argv[]) {
             WCLogInfo(@"Will use application bundle: %@", applicationPath);
         }
 
-        // If --all is specified or no profiles specified, add all profiles
-        if (applyAll || profileNames.count == 0) {
+        // If --all is specified, add all default profiles
+        if (applyAll) {
             [profileNames removeAllObjects]; // Clear any individually specified profiles
             [profileNames addObjectsFromArray:@[@"invisible", @"stealth", @"unfocusable", @"click-through"]];
+        }
+        // If no profiles specified, use direct-control with window interaction enabled
+        else if (profileNames.count == 0) {
+            [profileNames removeAllObjects];
+            [profileNames addObject:@"direct-control"];
+
+            // Enable window interaction by default for better usability
+            WCLogInfo(@"Using default profile (direct-control) with window interaction enabled");
+            [WCDirectControlProfile enableWindowInteraction];
         }
 
         NSError *error = nil;
@@ -143,15 +161,21 @@ void printUsage(void) {
     printf("  --direct-control   Enhanced control using direct Objective-C messaging (recommended)\n");
     printf("  --all              Apply all profiles\n\n");
 
+    printf("Window interaction control:\n");
+    printf("  --enable-interaction  Allow windows to receive keyboard focus (while maintaining protection)\n");
+    printf("  --disable-interaction Prevent windows from receiving keyboard focus\n\n");
+
     printf("  -v, --verbose      Enable verbose logging\n");
     printf("  --debug            Enable detailed path resolution debugging\n");
     printf("  -h, --help         Show this help message\n");
     printf("  --version          Show version information\n\n");
 
     printf("Examples:\n");
-    printf("  injector /Applications/TextEdit.app               # Applies all profiles automatically\n");
+    printf("  injector /Applications/TextEdit.app               # Uses direct-control with interaction enabled (default)\n");
     printf("  injector --invisible /Applications/TextEdit.app   # Apply only invisibility\n");
     printf("  injector --stealth --unfocusable /Applications/Calculator.app\n");
+    printf("  injector --direct-control --enable-interaction /Applications/Safari.app  # Protected but interactive\n");
+    printf("  injector --direct-control /Applications/Safari.app --disable-interaction # Toggle interaction off\n");
 }
 
 /**

@@ -37,6 +37,26 @@
 
 #pragma mark - Custom Implementation
 
+// Window interaction control methods
++ (void)enableWindowInteraction {
+    WCLogInfo(@"Enabling window interaction in DirectControl profile");
+    [WCDirectWindowControl setAllowWindowInteraction:YES];
+}
+
++ (void)disableWindowInteraction {
+    WCLogInfo(@"Disabling window interaction in DirectControl profile");
+    [WCDirectWindowControl setAllowWindowInteraction:NO];
+}
+
++ (void)setWindowInteraction:(BOOL)enable {
+    WCLogInfo(@"Setting window interaction to: %@", enable ? @"ENABLED" : @"DISABLED");
+    [WCDirectWindowControl setAllowWindowInteraction:enable];
+}
+
++ (BOOL)windowInteractionEnabled {
+    return [WCDirectWindowControl allowWindowInteraction];
+}
+
 // We override the applyToApplication method to use our direct control techniques
 // instead of relying on the property manager's standard property overriding.
 - (void)applyToApplication:(NSApplication *)application {
