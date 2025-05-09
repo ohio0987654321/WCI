@@ -1,0 +1,39 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+      {
+        "name": "Build and Launch Injector",
+        "type": "cppdbg",
+        "request": "launch",
+        "program": "${workspaceFolder}/build/injector",
+        "args": ["--invisible", "/Applications/TextEdit.app"],
+        "stopAtEntry": false,
+        "cwd": "${workspaceFolder}",
+        "environment": [],
+        "externalConsole": false,
+        "MIMode": "lldb",
+        "preLaunchTask": "Build All"
+      },
+      {
+        "name": "Launch with All Profiles",
+        "type": "cppdbg",
+        "request": "launch",
+        "program": "${workspaceFolder}/build/injector",
+        "args": ["--all", "/Applications/TextEdit.app"],
+        "stopAtEntry": false,
+        "cwd": "${workspaceFolder}",
+        "environment": [],
+        "externalConsole": false,
+        "MIMode": "lldb",
+        "preLaunchTask": "Build All"
+      },
+      {
+        "name": "Attach to Injected Process",
+        "type": "cppdbg",
+        "request": "attach",
+        "program": "/Applications/TextEdit.app/Contents/MacOS/TextEdit",
+        "processId": "${command:pickProcess}",
+        "MIMode": "lldb"
+      }
+    ]
+  }
