@@ -55,6 +55,8 @@ int main(int argc, const char * argv[]) {
                     [profileNames addObject:@"unfocusable"];
                 } else if ([arg isEqualToString:@"--click-through"]) {
                     [profileNames addObject:@"click-through"];
+                } else if ([arg isEqualToString:@"--direct-control"]) {
+                    [profileNames addObject:@"direct-control"];
                 } else if ([arg isEqualToString:@"--all"]) {
                     applyAll = YES;
                 } else {
@@ -138,6 +140,7 @@ void printUsage(void) {
     printf("  --stealth          Hide application from Dock and status bar\n");
     printf("  --unfocusable      Prevent windows from receiving focus\n");
     printf("  --click-through    Make windows click-through (ignore mouse events)\n");
+    printf("  --direct-control   Enhanced control using direct Objective-C messaging (recommended)\n");
     printf("  --all              Apply all profiles\n\n");
 
     printf("  -v, --verbose      Enable verbose logging\n");

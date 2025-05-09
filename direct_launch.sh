@@ -1,116 +1,74 @@
 #!/bin/bash
-# WindowControlInjector Direct Launch Script
-# This script launches applications with the WCI library injected
-# It ensures each launch is a new instance with improved screen recording protection
+# direct_launch.sh - Quick launcher for WindowControlInjector with direct-control profile
+# This script makes it easy to inject the direct-control profile into any macOS application
 
-# Function to show usage instructions
-show_usage() {
-    echo "Usage: $0 [options] <application_path>"
-    echo ""
-    echo "Options:"
-    echo "  --invisible     Make windows invisible to screen recording"
-    echo "  --stealth       Hide application from Dock and status bar"
-    echo "  --unfocusable   Prevent windows from receiving focus"
-    echo "  --click-through Make windows click-through (ignore mouse events)"
-    echo "  --all           Apply all profiles"
-    echo ""
-    echo "Example:"
-    echo "  $0 --invisible --stealth /Applications/TextEdit.app"
-    exit 1
+# Display colored output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+BLUE='\033[0;34m'
+BOLD='\033[1m'
+NC='\033[0m' # No Color
+
+# Print usage
+function print_usage {
+    echo -e "${BOLD}Usage:${NC} ./direct_launch.sh <application_path>"
+    echo
+    echo -e "${BOLD}Examples:${NC}"
+    echo "  ./direct_launch.sh /Applications/TextEdit.app"
+    echo "  ./direct_launch.sh /Applications/Calculator.app"
+    echo
+    echo -e "${BOLD}Description:${NC}"
+    echo "  This script launches the specified application with the advanced direct-control"
+    echo "  profile applied, which provides enhanced screen recording protection,"
+    echo "  stealth mode, and click-through capabilities."
+    echo
+    echo -e "${YELLOW}Note: You may need to run this script with sudo for some applications.${NC}"
 }
 
 # Check if we have enough arguments
-if [ $# -lt 2 ]; then
-    show_usage
-fi
-
-# Get the absolute path to the directory containing this script
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-
-# Find the dylib
-DYLIB_PATH="$SCRIPT_DIR/build/libwindow_control.dylib"
-if [ ! -f "$DYLIB_PATH" ]; then
-    echo "Error: Cannot find libwindow_control.dylib at $DYLIB_PATH"
-    echo "Make sure to build the project first."
+if [ $# -lt 1 ]; then
+    echo -e "${RED}Error: No application path provided.${NC}"
+    print_usage
     exit 1
 fi
 
-# Parse arguments to collect profiles
-PROFILES=""
-APP_PATH=""
+APP_PATH="$1"
 
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        --invisible)
-            if [ -z "$PROFILES" ]; then
-                PROFILES="invisible"
-            else
-                PROFILES="$PROFILES,invisible"
-            fi
-            shift
-            ;;
-        --stealth)
-            if [ -z "$PROFILES" ]; then
-                PROFILES="stealth"
-            else
-                PROFILES="$PROFILES,stealth"
-            fi
-            shift
-            ;;
-        --unfocusable)
-            if [ -z "$PROFILES" ]; then
-                PROFILES="unfocusable"
-            else
-                PROFILES="$PROFILES,unfocusable"
-            fi
-            shift
-            ;;
-        --click-through)
-            if [ -z "$PROFILES" ]; then
-                PROFILES="click_through"
-            else
-                PROFILES="$PROFILES,click_through"
-            fi
-            shift
-            ;;
-        --all)
-            PROFILES="invisible,stealth,unfocusable,click_through"
-            shift
-            ;;
-        --help)
-            show_usage
-            ;;
-        *)
-            # The last parameter should be the application path
-            APP_PATH="$1"
-            shift
-            ;;
-    esac
-done
-
-# Verify we have an application path
-if [ -z "$APP_PATH" ]; then
-    echo "Error: No application path provided"
-    show_usage
-fi
-
-# Verify the application exists
-if [ ! -d "$APP_PATH" ]; then
-    echo "Error: Application not found at $APP_PATH"
+# Check if the application exists
+if [ ! -e "$APP_PATH" ]; then
+    echo -e "${RED}Error: Application not found at '$APP_PATH'${NC}"
     exit 1
 fi
 
-# Setup environment variables
-export DYLD_INSERT_LIBRARIES="$DYLIB_PATH"
+# Build directory where the injector binary should be
+BUILD_DIR="./build"
+INJECTOR_PATH="$BUILD_DIR/injector"
 
-if [ ! -z "$PROFILES" ]; then
-    export WCI_PROFILES="$PROFILES"
-    echo "Applying profiles: $PROFILES"
+# Check if the injector binary exists
+if [ ! -x "$INJECTOR_PATH" ]; then
+    echo -e "${YELLOW}Building WindowControlInjector...${NC}"
+    make
+
+    # Check if build was successful
+    if [ ! -x "$INJECTOR_PATH" ]; then
+        echo -e "${RED}Error: Failed to build WindowControlInjector.${NC}"
+        echo "Try running 'make' manually to see the error."
+        exit 1
+    fi
 fi
 
-# Launch the application with the -n flag to force a new instance
-echo "Launching $APP_PATH with WindowControlInjector..."
-/usr/bin/open -n -a "$APP_PATH"
+# Launch the application with direct-control profile
+echo -e "${BLUE}Launching ${BOLD}$(basename "$APP_PATH")${NC}${BLUE} with direct-control profile...${NC}"
+"$INJECTOR_PATH" --direct-control --verbose "$APP_PATH"
 
-echo "Application launched!"
-echo "If you need to debug issues, check the log file at ~/wci_debug.log"
+# Check exit status
+if [ $? -eq 0 ]; then
+    echo -e "${GREEN}Successfully launched application with direct-control profile.${NC}"
+else
+    echo -e "${RED}Failed to launch application with direct-control profile.${NC}"
+    echo "Check the error message above for details."
+    exit 1
+fi
+
+exit 0

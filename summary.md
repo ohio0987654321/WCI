@@ -1,101 +1,113 @@
-# WindowControlInjector Improvements Summary
+# WindowControlInjector: Direct Control Implementation
 
-## Issues Addressed
+## Overview
 
-1. **Screen Recording Protection**
-   - Enhanced invisible profile with comprehensive screen recording protection
-   - Applied key window settings from AIHelper (Tauri project) implementation
-   - Fixed window transparency and sharing settings
+WindowControlInjector has been enhanced with a new `direct-control` profile that provides more robust screen recording protection, stealth mode, and window behavior management. This document explains the implementation and benefits of this approach.
 
-2. **Status Bar and Dock Hiding**
-   - Improved stealth profile with enhanced NSApplication settings
-   - Added additional window collection behaviors to prevent visibility in system UIs
-   - Set `canHide` property to NO to prevent Mission Control from showing the window
+## Implementation Approach
 
-3. **Multiple Instance Support**
-   - Added `-n` flag to the `/usr/bin/open` command to force new instance creation
-   - Updated both profile and property override injection methods
-   - Created convenient direct_launch.sh script for easy testing
+### Traditional Property Override Approach
 
-## Configuration Improvements
+The initial WindowControlInjector design used property overrides to modify window and application behavior:
 
-### Invisible Profile Changes
+1. Intercept property getters/setters through method swizzling
+2. Return custom values from a property registry
+3. Apply these property values when queried by the system
 
-```objective-c
-// Enhanced collection behavior that prevents capture
-@"collectionBehavior": @(NSWindowCollectionBehaviorStationary |
-                         NSWindowCollectionBehaviorFullScreenPrimary |
-                         NSWindowCollectionBehaviorIgnoresCycle |
-                         NSWindowCollectionBehaviorCanJoinAllSpaces |
-                         NSWindowCollectionBehaviorFullScreenAuxiliary),
+While this approach works for many cases, it has limitations:
 
-// Set window level to floating - essential for screen recording protection
-@"level": @(3), // NSFloatingWindowLevel
+- Only intercepts formal property accesses, not direct ivar access
+- Doesn't catch all window creation events
+- Limited protection against advanced screen recording tools
+- Some properties must be set at specific times during window creation
 
-// Prevent hiding by system (critical for Mission Control exclusion)
-@"canHide": @NO,
+### New Direct Control Approach
 
-// Better transparency settings
-@"backgroundColor": [NSColor clearColor],
-@"movableByWindowBackground": @YES,
-@"alphaValue": @(0.8),
-```
+The new `direct-control` profile uses a different approach:
 
-### Stealth Profile Changes
+1. **Direct Message Sending**: Directly calls Objective-C methods to set properties
+2. **Active Window Monitoring**: Monitors window creation events through notifications
+3. **Runtime Class Modification**: Creates custom window subclasses as needed
+4. **Periodic Reapplication**: Applies settings periodically to catch any windows that might reset
 
-```objective-c
-// Enhanced presentation options
-@"presentationOptions": @(NSApplicationPresentationHideDock |
-                         NSApplicationPresentationHideMenuBar |
-                         NSApplicationPresentationDisableAppleMenu |
-                         NSApplicationPresentationDisableProcessSwitching |
-                         NSApplicationPresentationDisableHideApplication),
+This implementation is inspired by techniques used in the AIHelper project, which demonstrated more robust protection against screen recording.
 
-// Additional application settings
-@"showsTabBar": @NO,
-@"automaticCustomizeTouchBarMenuItemEnabled": @NO,
+## Key Features
 
-// Window settings that help with hiding
-@"canHide": @NO,
-@"collectionBehavior": @(NSWindowCollectionBehaviorStationary |
-                         NSWindowCollectionBehaviorIgnoresCycle |
-                         NSWindowCollectionBehaviorCanJoinAllSpaces |
-                         NSWindowCollectionBehaviorFullScreenAuxiliary),
-```
+### Enhanced Screen Recording Protection
 
-## Testing Instructions
+- Higher window level settings (`CGScreenSaverWindowLevel` instead of `NSFloatingWindowLevel`)
+- Direct shader control for window appearance
+- Multiple redundant transparency settings
+- More aggressive window sharing type control
 
-Use the included `direct_launch.sh` script for testing:
+### Improved Stealth Mode
+
+- Advanced presentation options for application hiding
+- Multiple techniques to hide from Dock and Mission Control
+- Prevents process activation and switching
+- Full menu bar hiding and application suppression
+
+### Better Click-Through Support
+
+- Custom window subclassing to prevent focus
+- Dynamic runtime class creation for robust behavior
+- Maintains clickability while preventing keyboard focus
+- Ensures windows stay "behind" active applications
+
+## Usage
+
+The new direct-control profile can be used with:
 
 ```bash
-# Make text editor invisible to screen recording
-./direct_launch.sh --invisible /Applications/TextEdit.app
-
-# Hide calculator from dock and status bar
-./direct_launch.sh --stealth /Applications/Calculator.app
-
-# Apply all profiles
-./direct_launch.sh --all /Applications/Notes.app
-
-# Test multiple instances
-./direct_launch.sh --invisible /Applications/TextEdit.app
-# Run the command again to launch another instance
-./direct_launch.sh --invisible /Applications/TextEdit.app
+./injector --direct-control /Applications/YourApp.app
 ```
 
-## Debugging
+Or use the included convenience script:
 
-Check the debug log at `~/wci_debug.log` if you encounter any issues. This file contains:
-- Environment variables
-- Profile application status
-- Interceptor installation status
-- Any errors that occur during injection
+```bash
+./direct_launch.sh /Applications/YourApp.app
+```
 
-## Implementation Notes
+## Technical Details
 
-The improvements were inspired by examining the AIHelper Tauri-based Rust application, which successfully implements similar window management features. Key insights were gathered from:
+### Key Technical Components
 
-- AIHelper's `window.rs` module for window property settings
-- AIHelper's `screenshot.rs` module for screen capture protection techniques
+1. **Dynamic Class Creation**:
+   - Creates window-specific subclasses at runtime
+   - Customizes `canBecomeKey` and `canBecomeMain` behavior
+   - Preserves other window behaviors
 
-These changes should significantly improve the reliability and effectiveness of WindowControlInjector for its key use cases.
+2. **Active Window Monitoring**:
+   - Listens for `NSWindowDidExposeNotification` and other window events
+   - Automatically applies settings to new windows
+   - Periodic timer ensures settings persist
+
+3. **High Window Level**:
+   - Uses `CGScreenSaverWindowLevel` (1000) for stronger protection
+   - Combines with collection behaviors for maximum effect
+   - Makes windows visible to users but invisible to screen recording
+
+### Comparison to Traditional Profiles
+
+| Feature | Traditional Profiles | Direct Control Profile |
+|---------|---------------------|------------------------|
+| Screen Recording Protection | Basic | Enhanced |
+| Stealth Mode | App hidden from Dock | App hidden from all UI elements |
+| Focus Control | Can be overridden | Custom class implementation |
+| Click-Through | Basic support | Reliable with focus control |
+| Window Persistence | One-time setup | Continuous monitoring |
+| Compatibility | Most apps | All AppKit apps |
+
+## Future Enhancements
+
+- Additional window collection behaviors for specific cases
+- Per-application configuration profiles
+- More granular control of specific window properties
+- Support for intercepting additional window creation patterns
+
+## References
+
+- Inspired by techniques in AIHelper's macOS window management
+- Uses advanced Objective-C runtime features for dynamic class creation
+- Combines multiple macOS window management APIs for maximum effect
