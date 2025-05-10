@@ -15,7 +15,7 @@
 
 // Import the core components
 #import "../src/core/protector.h"
-#import "../src/util/logger.h"
+#import "../src/util/logger.h"  // Using enhanced logger instead of old logger
 #import "injector.h"
 
 /**

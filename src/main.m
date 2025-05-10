@@ -38,7 +38,12 @@ int main(int argc, const char * argv[]) {
                     printVersion();
                     return 0;
                 } else {
-                    WCLogError(@"Unknown option: %@", arg);
+                    [[WCLogger sharedLogger] logWithLevel:WCLogLevelError
+                                                 category:@"General"
+                                                     file:__FILE__
+                                                     line:__LINE__
+                                                 function:__PRETTY_FUNCTION__
+                                                   format:@"Unknown option: %@", arg];
                     printUsage();
                     return 1;
                 }
@@ -47,7 +52,12 @@ int main(int argc, const char * argv[]) {
                 if (applicationPath == nil) {
                     applicationPath = arg;
                 } else {
-                    WCLogError(@"Multiple application paths specified");
+                    [[WCLogger sharedLogger] logWithLevel:WCLogLevelError
+                                                 category:@"General"
+                                                     file:__FILE__
+                                                     line:__LINE__
+                                                 function:__PRETTY_FUNCTION__
+                                                   format:@"Multiple application paths specified"];
                     printUsage();
                     return 1;
                 }
@@ -56,7 +66,12 @@ int main(int argc, const char * argv[]) {
 
         // Validate arguments
         if (applicationPath == nil) {
-            WCLogError(@"No application path specified");
+            [[WCLogger sharedLogger] logWithLevel:WCLogLevelError
+                                         category:@"General"
+                                             file:__FILE__
+                                             line:__LINE__
+                                         function:__PRETTY_FUNCTION__
+                                           format:@"No application path specified"];
             printUsage();
             return 1;
         }
@@ -66,19 +81,34 @@ int main(int argc, const char * argv[]) {
         NSString *executablePath = resolveApplicationPath(applicationPath, YES); // Force debug mode for path resolution
         if (executablePath == nil) {
             printf("[WindowControlInjector] ERROR: Could not resolve executable path for: %s\n", [applicationPath UTF8String]);
-            WCLogError(@"Invalid application path: %@", applicationPath);
+            [[WCLogger sharedLogger] logWithLevel:WCLogLevelError
+                                         category:@"General"
+                                             file:__FILE__
+                                             line:__LINE__
+                                         function:__PRETTY_FUNCTION__
+                                           format:@"Invalid application path: %@", applicationPath];
             return 1;
         }
 
         printf("[WindowControlInjector] Using application: %s\n", [applicationPath UTF8String]);
         printf("[WindowControlInjector] Found executable at: %s\n", [executablePath UTF8String]);
-        WCLogInfo(@"Using application: %@", applicationPath);
+        [[WCLogger sharedLogger] logWithLevel:WCLogLevelInfo
+                                     category:@"General"
+                                         file:__FILE__
+                                         line:__LINE__
+                                     function:__PRETTY_FUNCTION__
+                                       format:@"Using application: %@", applicationPath];
 
         // Initialize the WindowControlInjector
         printf("[WindowControlInjector] Initializing WindowControlInjector...\n");
         if (!WCInitialize()) {
             printf("[WindowControlInjector] ERROR: Failed to initialize WindowControlInjector\n");
-            WCLogError(@"Failed to initialize WindowControlInjector");
+            [[WCLogger sharedLogger] logWithLevel:WCLogLevelError
+                                         category:@"General"
+                                             file:__FILE__
+                                             line:__LINE__
+                                         function:__PRETTY_FUNCTION__
+                                           format:@"Failed to initialize WindowControlInjector"];
             return 1;
         }
         printf("[WindowControlInjector] Successfully initialized WindowControlInjector\n");
@@ -91,7 +121,12 @@ int main(int argc, const char * argv[]) {
         if (!success) {
             if (error) {
                 printf("[WindowControlInjector] ERROR: Protection failed: %s\n", [[error localizedDescription] UTF8String]);
-                WCLogError(@"Protection failed: %@", [error localizedDescription]);
+                [[WCLogger sharedLogger] logWithLevel:WCLogLevelError
+                                             category:@"General"
+                                                 file:__FILE__
+                                                 line:__LINE__
+                                             function:__PRETTY_FUNCTION__
+                                               format:@"Protection failed: %@", [error localizedDescription]];
 
                 // Provide additional diagnostic information
                 if ([error.domain isEqualToString:WCProtectorErrorDomain]) {
@@ -121,13 +156,23 @@ int main(int argc, const char * argv[]) {
                 }
             } else {
                 printf("[WindowControlInjector] ERROR: Protection failed for unknown reason\n");
-                WCLogError(@"Protection failed for unknown reason");
+                [[WCLogger sharedLogger] logWithLevel:WCLogLevelError
+                                             category:@"General"
+                                                 file:__FILE__
+                                                 line:__LINE__
+                                             function:__PRETTY_FUNCTION__
+                                               format:@"Protection failed for unknown reason"];
             }
             return 1;
         }
 
         printf("[WindowControlInjector] Successfully protected application: %s\n", [applicationPath UTF8String]);
-        WCLogInfo(@"Successfully protected application: %@", applicationPath);
+        [[WCLogger sharedLogger] logWithLevel:WCLogLevelInfo
+                                     category:@"General"
+                                         file:__FILE__
+                                         line:__LINE__
+                                     function:__PRETTY_FUNCTION__
+                                       format:@"Successfully protected application: %@", applicationPath];
         return 0;
     }
 }
@@ -169,8 +214,18 @@ NSString *resolveApplicationPath(NSString *path, BOOL debugMode) {
     // 1. Normalize the path
     NSString *normalizedPath = [path stringByStandardizingPath];
     if (debugMode) {
-        WCLogInfo(@"Resolving application path: %@", path);
-        WCLogInfo(@"Normalized path: %@", normalizedPath);
+        [[WCLogger sharedLogger] logWithLevel:WCLogLevelInfo
+                                     category:@"General"
+                                         file:__FILE__
+                                         line:__LINE__
+                                     function:__PRETTY_FUNCTION__
+                                       format:@"Resolving application path: %@", path];
+        [[WCLogger sharedLogger] logWithLevel:WCLogLevelInfo
+                                     category:@"General"
+                                         file:__FILE__
+                                         line:__LINE__
+                                     function:__PRETTY_FUNCTION__
+                                       format:@"Normalized path: %@", normalizedPath];
     }
 
     // Check if the path is valid
@@ -179,9 +234,19 @@ NSString *resolveApplicationPath(NSString *path, BOOL debugMode) {
 
     if (!exists) {
         if (debugMode) {
-            WCLogDebug(@"Path does not exist: %@", normalizedPath);
+            [[WCLogger sharedLogger] logWithLevel:WCLogLevelDebug
+                                         category:@"General"
+                                             file:__FILE__
+                                             line:__LINE__
+                                         function:__PRETTY_FUNCTION__
+                                           format:@"Path does not exist: %@", normalizedPath];
         }
-        WCLogError(@"Application not found at path: %@", path);
+        [[WCLogger sharedLogger] logWithLevel:WCLogLevelError
+                                     category:@"General"
+                                         file:__FILE__
+                                         line:__LINE__
+                                     function:__PRETTY_FUNCTION__
+                                       format:@"Application not found at path: %@", path];
         return nil;
     }
 
@@ -193,21 +258,41 @@ NSString *resolveApplicationPath(NSString *path, BOOL debugMode) {
         resolvedPath = [fileManager destinationOfSymbolicLinkAtPath:normalizedPath error:&linkError];
 
         if (linkError || !resolvedPath) {
-            WCLogError(@"Failed to resolve symlink: %@", normalizedPath);
+            [[WCLogger sharedLogger] logWithLevel:WCLogLevelError
+                                         category:@"General"
+                                             file:__FILE__
+                                             line:__LINE__
+                                         function:__PRETTY_FUNCTION__
+                                           format:@"Failed to resolve symlink: %@", normalizedPath];
             if (linkError) {
-                WCLogError(@"Error: %@", [linkError localizedDescription]);
+                [[WCLogger sharedLogger] logWithLevel:WCLogLevelError
+                                             category:@"General"
+                                                 file:__FILE__
+                                                 line:__LINE__
+                                             function:__PRETTY_FUNCTION__
+                                               format:@"Error: %@", [linkError localizedDescription]];
             }
             return nil;
         }
 
         if (debugMode) {
-            WCLogInfo(@"Resolved symlink to: %@", resolvedPath);
+            [[WCLogger sharedLogger] logWithLevel:WCLogLevelInfo
+                                         category:@"General"
+                                             file:__FILE__
+                                             line:__LINE__
+                                         function:__PRETTY_FUNCTION__
+                                           format:@"Resolved symlink to: %@", resolvedPath];
         }
 
         // Check if the resolved path exists
         exists = [fileManager fileExistsAtPath:resolvedPath isDirectory:&isDirectory];
         if (!exists) {
-            WCLogError(@"Symlink destination does not exist: %@", resolvedPath);
+            [[WCLogger sharedLogger] logWithLevel:WCLogLevelError
+                                         category:@"General"
+                                             file:__FILE__
+                                             line:__LINE__
+                                         function:__PRETTY_FUNCTION__
+                                           format:@"Symlink destination does not exist: %@", resolvedPath];
             return nil;
         }
     }
@@ -215,13 +300,23 @@ NSString *resolveApplicationPath(NSString *path, BOOL debugMode) {
     // 3. If it's a directory, try to handle it as an app bundle or find an executable
     if (isDirectory) {
         if (debugMode) {
-            WCLogInfo(@"Path is a directory: %@", resolvedPath);
+            [[WCLogger sharedLogger] logWithLevel:WCLogLevelInfo
+                                         category:@"General"
+                                             file:__FILE__
+                                             line:__LINE__
+                                         function:__PRETTY_FUNCTION__
+                                           format:@"Path is a directory: %@", resolvedPath];
         }
 
         // 3.1 Check if it has the .app extension (common but not required)
         BOOL isAppBundle = [resolvedPath.pathExtension isEqualToString:@"app"];
         if (!isAppBundle) {
-            WCLogWarning(@"Path doesn't have .app extension: %@", resolvedPath);
+            [[WCLogger sharedLogger] logWithLevel:WCLogLevelWarning
+                                         category:@"General"
+                                             file:__FILE__
+                                             line:__LINE__
+                                         function:__PRETTY_FUNCTION__
+                                           format:@"Path doesn't have .app extension: %@", resolvedPath];
         }
 
         // 3.2 Try standard app bundle structure
@@ -232,7 +327,12 @@ NSString *resolveApplicationPath(NSString *path, BOOL debugMode) {
         // 3.3 Try to get executable from Info.plist if it exists
         if ([fileManager fileExistsAtPath:infoPlistPath]) {
             if (debugMode) {
-                WCLogInfo(@"Found Info.plist at: %@", infoPlistPath);
+                [[WCLogger sharedLogger] logWithLevel:WCLogLevelInfo
+                                             category:@"General"
+                                                 file:__FILE__
+                                                 line:__LINE__
+                                             function:__PRETTY_FUNCTION__
+                                               format:@"Found Info.plist at: %@", infoPlistPath];
             }
 
             NSDictionary *infoPlist = [NSDictionary dictionaryWithContentsOfFile:infoPlistPath];
@@ -240,7 +340,12 @@ NSString *resolveApplicationPath(NSString *path, BOOL debugMode) {
 
             if (executableName) {
                 if (debugMode) {
-                    WCLogInfo(@"Found CFBundleExecutable in Info.plist: %@", executableName);
+                    [[WCLogger sharedLogger] logWithLevel:WCLogLevelInfo
+                                                 category:@"General"
+                                                     file:__FILE__
+                                                     line:__LINE__
+                                                 function:__PRETTY_FUNCTION__
+                                                   format:@"Found CFBundleExecutable in Info.plist: %@", executableName];
                 }
 
                 // Standard location
@@ -250,7 +355,12 @@ NSString *resolveApplicationPath(NSString *path, BOOL debugMode) {
                 if ([fileManager fileExistsAtPath:executablePath] &&
                     [fileManager isExecutableFileAtPath:executablePath]) {
                     if (debugMode) {
-                        WCLogInfo(@"Found executable at standard location: %@", executablePath);
+                        [[WCLogger sharedLogger] logWithLevel:WCLogLevelInfo
+                                                     category:@"General"
+                                                         file:__FILE__
+                                                         line:__LINE__
+                                                     function:__PRETTY_FUNCTION__
+                                                       format:@"Found executable at standard location: %@", executablePath];
                     }
                     return executablePath;
                 }
@@ -263,7 +373,12 @@ NSString *resolveApplicationPath(NSString *path, BOOL debugMode) {
                 if ([fileManager fileExistsAtPath:executablePath] &&
                     [fileManager isExecutableFileAtPath:executablePath]) {
                     if (debugMode) {
-                        WCLogInfo(@"Found executable directly in Contents: %@", executablePath);
+                        [[WCLogger sharedLogger] logWithLevel:WCLogLevelInfo
+                                                     category:@"General"
+                                                         file:__FILE__
+                                                         line:__LINE__
+                                                     function:__PRETTY_FUNCTION__
+                                                       format:@"Found executable directly in Contents: %@", executablePath];
                     }
                     return executablePath;
                 }
@@ -274,13 +389,23 @@ NSString *resolveApplicationPath(NSString *path, BOOL debugMode) {
                 if ([fileManager fileExistsAtPath:executablePath] &&
                     [fileManager isExecutableFileAtPath:executablePath]) {
                     if (debugMode) {
-                        WCLogInfo(@"Found executable at app bundle root: %@", executablePath);
+                        [[WCLogger sharedLogger] logWithLevel:WCLogLevelInfo
+                                                     category:@"General"
+                                                         file:__FILE__
+                                                         line:__LINE__
+                                                     function:__PRETTY_FUNCTION__
+                                                       format:@"Found executable at app bundle root: %@", executablePath];
                     }
                     return executablePath;
                 }
             } else {
                 if (debugMode) {
-                    WCLogDebug(@"No CFBundleExecutable found in Info.plist");
+                    [[WCLogger sharedLogger] logWithLevel:WCLogLevelDebug
+                                                 category:@"General"
+                                                     file:__FILE__
+                                                     line:__LINE__
+                                                 function:__PRETTY_FUNCTION__
+                                                   format:@"No CFBundleExecutable found in Info.plist"];
                 }
             }
         }
@@ -294,7 +419,12 @@ NSString *resolveApplicationPath(NSString *path, BOOL debugMode) {
             if ([fileManager fileExistsAtPath:executablePath] &&
                 [fileManager isExecutableFileAtPath:executablePath]) {
                 if (debugMode) {
-                    WCLogInfo(@"Found executable using app name: %@", executablePath);
+                    [[WCLogger sharedLogger] logWithLevel:WCLogLevelInfo
+                                                 category:@"General"
+                                                     file:__FILE__
+                                                     line:__LINE__
+                                                 function:__PRETTY_FUNCTION__
+                                                   format:@"Found executable using app name: %@", executablePath];
                 }
                 return executablePath;
             }
@@ -307,7 +437,12 @@ NSString *resolveApplicationPath(NSString *path, BOOL debugMode) {
 
             if (error == nil && macOSContents.count > 0) {
                 if (debugMode) {
-                    WCLogInfo(@"Searching for any executable in MacOS directory");
+                    [[WCLogger sharedLogger] logWithLevel:WCLogLevelInfo
+                                                 category:@"General"
+                                                     file:__FILE__
+                                                     line:__LINE__
+                                                 function:__PRETTY_FUNCTION__
+                                                   format:@"Searching for any executable in MacOS directory"];
                 }
 
                 for (NSString *item in macOSContents) {
@@ -316,7 +451,12 @@ NSString *resolveApplicationPath(NSString *path, BOOL debugMode) {
 
                     if ([fileManager isExecutableFileAtPath:itemPath]) {
                         if (debugMode) {
-                            WCLogInfo(@"Found executable in MacOS directory: %@", itemPath);
+                            [[WCLogger sharedLogger] logWithLevel:WCLogLevelInfo
+                                                         category:@"General"
+                                                             file:__FILE__
+                                                             line:__LINE__
+                                                         function:__PRETTY_FUNCTION__
+                                                           format:@"Found executable in MacOS directory: %@", itemPath];
                         }
                         return itemPath;
                     }
@@ -327,17 +467,37 @@ NSString *resolveApplicationPath(NSString *path, BOOL debugMode) {
         // 3.6 Check if the directory itself is executable (rare)
         if ([fileManager isExecutableFileAtPath:resolvedPath]) {
             if (debugMode) {
-                WCLogInfo(@"Directory itself is executable: %@", resolvedPath);
+                [[WCLogger sharedLogger] logWithLevel:WCLogLevelInfo
+                                             category:@"General"
+                                                 file:__FILE__
+                                                 line:__LINE__
+                                             function:__PRETTY_FUNCTION__
+                                               format:@"Directory itself is executable: %@", resolvedPath];
             }
             return resolvedPath;
         }
 
         // 3.7 Nothing worked, provide detailed error
-        WCLogError(@"Could not find executable in application bundle: %@", resolvedPath);
+        [[WCLogger sharedLogger] logWithLevel:WCLogLevelError
+                                     category:@"General"
+                                         file:__FILE__
+                                         line:__LINE__
+                                     function:__PRETTY_FUNCTION__
+                                       format:@"Could not find executable in application bundle: %@", resolvedPath];
         if (debugMode) {
-            WCLogDebug(@"Attempted paths:");
+            [[WCLogger sharedLogger] logWithLevel:WCLogLevelDebug
+                                         category:@"General"
+                                             file:__FILE__
+                                             line:__LINE__
+                                         function:__PRETTY_FUNCTION__
+                                           format:@"Attempted paths:"];
             for (NSString *attempt in attemptedPaths) {
-                WCLogDebug(@"  - %@", attempt);
+                [[WCLogger sharedLogger] logWithLevel:WCLogLevelDebug
+                                             category:@"General"
+                                                 file:__FILE__
+                                                 line:__LINE__
+                                             function:__PRETTY_FUNCTION__
+                                               format:@"  - %@", attempt];
             }
         }
 
@@ -345,16 +505,31 @@ NSString *resolveApplicationPath(NSString *path, BOOL debugMode) {
     } else {
         // 4. It's a file, check if it's executable
         if (debugMode) {
-            WCLogInfo(@"Path is a file: %@", resolvedPath);
+            [[WCLogger sharedLogger] logWithLevel:WCLogLevelInfo
+                                         category:@"General"
+                                             file:__FILE__
+                                             line:__LINE__
+                                         function:__PRETTY_FUNCTION__
+                                           format:@"Path is a file: %@", resolvedPath];
         }
 
         if ([fileManager isExecutableFileAtPath:resolvedPath]) {
             if (debugMode) {
-                WCLogInfo(@"File is executable: %@", resolvedPath);
+                [[WCLogger sharedLogger] logWithLevel:WCLogLevelInfo
+                                             category:@"General"
+                                                 file:__FILE__
+                                                 line:__LINE__
+                                             function:__PRETTY_FUNCTION__
+                                               format:@"File is executable: %@", resolvedPath];
             }
             return resolvedPath;
         } else {
-            WCLogError(@"File is not executable: %@", resolvedPath);
+            [[WCLogger sharedLogger] logWithLevel:WCLogLevelError
+                                         category:@"General"
+                                             file:__FILE__
+                                             line:__LINE__
+                                         function:__PRETTY_FUNCTION__
+                                           format:@"File is not executable: %@", resolvedPath];
             return nil;
         }
     }

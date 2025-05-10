@@ -2,8 +2,8 @@
  * @file nswindow_interceptor.h
  * @brief NSWindow interceptor for WindowControlInjector
  *
- * This file defines the NSWindow interceptor, which intercepts NSWindow method
- * calls and applies protection features like screen recording prevention.
+ * This file defines the NSWindow interceptor that manages window-level
+ * behavior and implements the WCInterceptor protocol.
  */
 
 #ifndef NSWINDOW_INTERCEPTOR_H
@@ -11,34 +11,39 @@
 
 #import <Foundation/Foundation.h>
 #import <AppKit/AppKit.h>
+#import "interceptor_protocol.h"
 
 /**
  * @brief NSWindow interceptor class for WindowControlInjector
  *
  * This class handles the interception of NSWindow method calls to implement
- * screen recording protection features.
+ * window-level controls and behaviors. It follows a singleton pattern and
+ * uses the improved method swizzling system. Conforms to the WCInterceptor protocol.
  */
-@interface WCNSWindowInterceptor : NSObject
+@interface WCNSWindowInterceptor : NSObject <WCInterceptor>
+
+// WCInterceptor protocol methods are declared in the protocol itself
+// We implement these methods:
+// + (instancetype)sharedInterceptor;
+// + (BOOL)install;
+// + (BOOL)uninstall;
+// + (BOOL)isInstalled;
+// + (NSString *)interceptorName;
+// + (NSString *)interceptorDescription;
+
+// Optional protocol methods we implement:
+// + (NSInteger)priority;
 
 /**
- * @brief Install the NSWindow interceptor
+ * @brief Apply protections to a window
  *
- * This method installs the NSWindow interceptor by swizzling methods
- * to implement screen recording protection.
+ * This method applies protection measures to the specified NSWindow instance.
+ * It's called during installation and by notification handlers to refresh
+ * protection settings on specific windows.
  *
- * @return YES if the interceptor was installed successfully, NO otherwise
+ * @param window The NSWindow instance to apply protections to
  */
-+ (BOOL)install;
-
-/**
- * @brief Uninstall the NSWindow interceptor
- *
- * This method uninstalls the NSWindow interceptor by restoring original
- * method implementations.
- *
- * @return YES if the interceptor was uninstalled successfully, NO otherwise
- */
-+ (BOOL)uninstall;
+- (void)applyProtectionsToWindow:(NSWindow *)window;
 
 @end
 

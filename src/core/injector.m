@@ -6,18 +6,24 @@
 #import "../../include/injector.h"
 #import "../../include/window_control.h"
 #import "../util/logger.h"
+#import "../util/error_manager.h"
+#import "../util/path_resolver.h"
+#import "../interceptors/interceptor_registry.h"
 #import "../interceptors/nswindow_interceptor.h"
+#import "protector.h"
 #import "../interceptors/nsapplication_interceptor.h"
 #import <dlfcn.h>
 #import <mach-o/dyld.h>
 
-// Error codes
+// Error codes - using error manager categories
 NSInteger const WCErrorInvalidArguments = 100;
 NSInteger const WCErrorApplicationNotFound = 101;
 NSInteger const WCErrorInjectionFailed = 102;
 
-// Static variables
-static NSString *gDylibPath = nil;
+// Use the error domain from WCError rather than redefining it
+// This avoids duplicate symbol errors
+
+// Static variables - removing gDylibPath as it's now handled by path resolver
 
 @implementation WCInjector
 
@@ -27,9 +33,9 @@ static NSString *gDylibPath = nil;
 + (BOOL)injectIntoApplication:(NSString *)applicationPath error:(NSError **)error {
     if (!applicationPath) {
         if (error) {
-            *error = [NSError errorWithDomain:WCErrorDomain
-                                         code:WCErrorInvalidArguments
-                                     userInfo:@{NSLocalizedDescriptionKey: @"Application path is required"}];
+            *error = [WCError errorWithCategory:WCErrorCategoryInjection
+                                           code:WCErrorInvalidArguments
+                                        message:@"Application path is required"];
         }
         return NO;
     }
@@ -38,20 +44,20 @@ static NSString *gDylibPath = nil;
     BOOL isDirectory = NO;
     if (![[NSFileManager defaultManager] fileExistsAtPath:applicationPath isDirectory:&isDirectory] || !isDirectory) {
         if (error) {
-            *error = [NSError errorWithDomain:WCErrorDomain
-                                         code:WCErrorApplicationNotFound
-                                     userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Application not found at path: %@", applicationPath]}];
+            *error = [WCError errorWithCategory:WCErrorCategoryInjection
+                                           code:WCErrorApplicationNotFound
+                                        message:[NSString stringWithFormat:@"Application not found at path: %@", applicationPath]];
         }
         return NO;
     }
 
-    // Get dylib path
-    NSString *dylibPath = [self findDylibPath];
+    // Get dylib path using the path resolver
+    NSString *dylibPath = [[WCPathResolver sharedResolver] resolvePathForDylib];
     if (!dylibPath) {
         if (error) {
-            *error = [NSError errorWithDomain:WCErrorDomain
-                                         code:WCErrorInjectionFailed
-                                     userInfo:@{NSLocalizedDescriptionKey: @"Could not find WindowControlInjector dylib"}];
+            *error = [WCError errorWithCategory:WCErrorCategoryInjection
+                                           code:WCErrorInjectionFailed
+                                        message:@"Could not find WindowControlInjector dylib"];
         }
         return NO;
     }
@@ -74,14 +80,25 @@ static NSString *gDylibPath = nil;
     // Launch the application
     @try {
         [task launch];
-        WCLogInfo(@"Successfully injected dylib into application: %@", applicationPath);
+        [[WCLogger sharedLogger] logWithLevel:WCLogLevelInfo
+                                     category:@"Injection"
+                                         file:__FILE__
+                                         line:__LINE__
+                                     function:__PRETTY_FUNCTION__
+                                       format:@"Successfully injected dylib into application: %@", applicationPath];
         return YES;
     } @catch (NSException *exception) {
         if (error) {
-            *error = [NSError errorWithDomain:WCErrorDomain
-                                         code:WCErrorInjectionFailed
-                                     userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Failed to launch application: %@", exception.reason]}];
+            *error = [WCError errorWithCategory:WCErrorCategoryInjection
+                                           code:WCErrorInjectionFailed
+                                        message:[NSString stringWithFormat:@"Failed to launch application: %@", exception.reason]];
         }
+        [[WCLogger sharedLogger] logWithLevel:WCLogLevelError
+                                     category:@"Injection"
+                                         file:__FILE__
+                                         line:__LINE__
+                                     function:__PRETTY_FUNCTION__
+                                       format:@"Failed to inject dylib: %@", exception.reason];
         return NO;
     }
 }
@@ -94,9 +111,9 @@ static NSString *gDylibPath = nil;
                         error:(NSError **)error {
     if (!applicationPath) {
         if (error) {
-            *error = [NSError errorWithDomain:WCErrorDomain
-                                         code:WCErrorInvalidArguments
-                                     userInfo:@{NSLocalizedDescriptionKey: @"Application path is required"}];
+            *error = [WCError errorWithCategory:WCErrorCategoryInjection
+                                           code:WCErrorInvalidArguments
+                                        message:@"Application path is required"];
         }
         return nil;
     }
@@ -105,52 +122,32 @@ static NSString *gDylibPath = nil;
     BOOL isDirectory = NO;
     if (![[NSFileManager defaultManager] fileExistsAtPath:applicationPath isDirectory:&isDirectory] || !isDirectory) {
         if (error) {
-            *error = [NSError errorWithDomain:WCErrorDomain
-                                         code:WCErrorApplicationNotFound
-                                     userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Application not found at path: %@", applicationPath]}];
+            *error = [WCError errorWithCategory:WCErrorCategoryInjection
+                                           code:WCErrorApplicationNotFound
+                                        message:[NSString stringWithFormat:@"Application not found at path: %@", applicationPath]];
         }
         return nil;
     }
 
-    // Get dylib path
-    NSString *dylibPath = [self findDylibPath];
+    // Get dylib path using the path resolver
+    NSString *dylibPath = [[WCPathResolver sharedResolver] resolvePathForDylib];
     if (!dylibPath) {
         if (error) {
-            *error = [NSError errorWithDomain:WCErrorDomain
-                                         code:WCErrorInjectionFailed
-                                     userInfo:@{NSLocalizedDescriptionKey: @"Could not find WindowControlInjector dylib"}];
+            *error = [WCError errorWithCategory:WCErrorCategoryInjection
+                                           code:WCErrorInjectionFailed
+                                        message:@"Could not find WindowControlInjector dylib"];
         }
         return nil;
     }
 
-    // Find the executable within the application bundle
-    NSString *executablePath = nil;
-    NSBundle *appBundle = [NSBundle bundleWithPath:applicationPath];
-    if (appBundle) {
-        executablePath = [appBundle executablePath];
-    }
+    // Find the executable within the application bundle using path resolver
+    NSString *executablePath = [[WCPathResolver sharedResolver] resolveExecutablePathForApplication:applicationPath];
 
     if (!executablePath) {
-        // Fallback method to find executable
-        NSString *contentsPath = [applicationPath stringByAppendingPathComponent:@"Contents"];
-        NSString *infoPlistPath = [contentsPath stringByAppendingPathComponent:@"Info.plist"];
-
-        if ([[NSFileManager defaultManager] fileExistsAtPath:infoPlistPath]) {
-            NSDictionary *infoPlist = [NSDictionary dictionaryWithContentsOfFile:infoPlistPath];
-            NSString *executableName = infoPlist[@"CFBundleExecutable"];
-
-            if (executableName) {
-                executablePath = [contentsPath stringByAppendingPathComponent:@"MacOS"];
-                executablePath = [executablePath stringByAppendingPathComponent:executableName];
-            }
-        }
-    }
-
-    if (!executablePath || ![[NSFileManager defaultManager] fileExistsAtPath:executablePath]) {
         if (error) {
-            *error = [NSError errorWithDomain:WCErrorDomain
-                                         code:WCErrorApplicationNotFound
-                                     userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Could not find executable in application: %@", applicationPath]}];
+            *error = [WCError errorWithCategory:WCErrorCategoryInjection
+                                           code:WCErrorApplicationNotFound
+                                        message:[NSString stringWithFormat:@"Could not find executable in application: %@", applicationPath]];
         }
         return nil;
     }
@@ -175,80 +172,45 @@ static NSString *gDylibPath = nil;
     // Launch the application
     @try {
         [task launch];
-        WCLogInfo(@"Successfully launched application with injected dylib: %@", applicationPath);
+        [[WCLogger sharedLogger] logWithLevel:WCLogLevelInfo
+                                     category:@"Injection"
+                                         file:__FILE__
+                                         line:__LINE__
+                                     function:__PRETTY_FUNCTION__
+                                       format:@"Successfully launched application with injected dylib: %@", applicationPath];
         return task;
     } @catch (NSException *exception) {
         if (error) {
-            *error = [NSError errorWithDomain:WCErrorDomain
-                                         code:WCErrorInjectionFailed
-                                     userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Failed to launch application: %@", exception.reason]}];
+            *error = [WCError errorWithCategory:WCErrorCategoryInjection
+                                           code:WCErrorInjectionFailed
+                                        message:[NSString stringWithFormat:@"Failed to launch application: %@", exception.reason]];
         }
+        [[WCLogger sharedLogger] logWithLevel:WCLogLevelError
+                                     category:@"Injection"
+                                         file:__FILE__
+                                         line:__LINE__
+                                     function:__PRETTY_FUNCTION__
+                                       format:@"Failed to launch application: %@", exception.reason];
         return nil;
     }
 }
 
 /**
  * Find the path to the WindowControlInjector dylib
+ *
+ * This method is now a wrapper around the path resolver for backward compatibility.
  */
 + (NSString *)findDylibPath {
-    // If a custom path was set, use that
-    if (gDylibPath) {
-        return gDylibPath;
-    }
-
-    // Try to find the dylib in known locations
-    NSArray<NSString *> *searchLocations = @[
-        // Same directory as the current executable
-        [[NSBundle mainBundle] bundlePath],
-        [[NSBundle mainBundle] resourcePath],
-        [[[NSBundle mainBundle] bundlePath] stringByAppendingPathComponent:@"lib"],
-
-        // User's Application Support directory
-        [NSString stringWithFormat:@"%@/Library/Application Support/WindowControlInjector",
-         NSHomeDirectory()],
-
-        // System Application Support directory
-        @"/Library/Application Support/WindowControlInjector"
-    ];
-
-    NSFileManager *fileManager = [NSFileManager defaultManager];
-
-    for (NSString *location in searchLocations) {
-        NSString *dylibPath = [location stringByAppendingPathComponent:@"libwindowcontrolinjector.dylib"];
-        if ([fileManager fileExistsAtPath:dylibPath]) {
-            return dylibPath;
-        }
-    }
-
-    // If we can't find it in common locations, try to get the path from the loaded dylibs
-    uint32_t count = _dyld_image_count();
-    for (uint32_t i = 0; i < count; i++) {
-        const char *path = _dyld_get_image_name(i);
-        NSString *imagePath = [NSString stringWithUTF8String:path];
-        if ([imagePath containsString:@"windowcontrolinjector"]) {
-            return imagePath;
-        }
-    }
-
-    // If we're already running as the dylib, get our own path
-    Dl_info info;
-    if (dladdr((const void *)WCProtectApplication, &info)) {
-        NSString *path = [NSString stringWithUTF8String:info.dli_fname];
-        if ([path containsString:@"windowcontrolinjector"]) {
-            return path;
-        }
-    }
-
-    // Dylib not found
-    WCLogError(@"Failed to find WindowControlInjector dylib");
-    return nil;
+    return [[WCPathResolver sharedResolver] resolvePathForDylib];
 }
 
 /**
  * Set a custom path for the WindowControlInjector dylib
+ *
+ * This method is now a wrapper around the path resolver for backward compatibility.
  */
 + (void)setDylibPath:(NSString *)path {
-    gDylibPath = [path copy];
+    [[WCPathResolver sharedResolver] setCustomDylibPath:path];
 }
 
 @end
@@ -271,8 +233,8 @@ static void initialize(void) {
             return;
         }
 
-        // Direct filesystem logging to confirm dylib is being loaded
-        NSString *logPath = [NSHomeDirectory() stringByAppendingPathComponent:@"wci_debug.log"];
+        // Direct filesystem logging to confirm dylib is being loaded using path resolver
+        NSString *logPath = [[WCPathResolver sharedResolver] logFilePath];
         NSString *logMessage = [NSString stringWithFormat:@"[%@] WindowControlInjector dylib loaded\n",
                                [NSDate date]];
 
@@ -301,7 +263,10 @@ static void initialize(void) {
             // Wait a moment before initializing to let the app finish loading
             // This can help prevent crashes during app startup
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-                // Call the initialization function
+                // Configure logger first
+                [[WCLogger sharedLogger] setLogLevel:WCLogLevelInfo];
+
+                // Call the initialization function - this will use the registry
                 BOOL success = WCInitialize();
 
                 // Mark as initialized
@@ -315,6 +280,13 @@ static void initialize(void) {
                     @"WindowControlInjector initialization failed\n";
                 [finalFileHandle writeData:[resultMessage dataUsingEncoding:NSUTF8StringEncoding]];
                 [finalFileHandle closeFile];
+
+                [[WCLogger sharedLogger] logWithLevel:WCLogLevelInfo
+                                             category:@"General"
+                                                 file:__FILE__
+                                                 line:__LINE__
+                                             function:__PRETTY_FUNCTION__
+                                               format:@"WindowControlInjector initialized successfully: %@", success ? @"YES" : @"NO"];
             });
         } @catch (NSException *exception) {
             // Log the exception but don't crash

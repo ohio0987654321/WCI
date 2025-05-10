@@ -36,7 +36,7 @@ ARCHS = x86_64 arm64 arm64e
 ARCH_FLAGS = $(foreach arch,$(ARCHS),-arch $(arch))
 
 # Version information
-VERSION = 1.0.0
+VERSION = 1.1.0
 BUILD_DATE = $(shell date +"%Y-%m-%d")
 GIT_COMMIT = $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 
@@ -57,6 +57,9 @@ directories:
 	@mkdir -p $(OBJ_DIR)/$(SRC_DIR)/util
 	@mkdir -p $(LIB_DIR)
 	@mkdir -p $(BIN_DIR)
+	@mkdir -p backup/core
+	@mkdir -p backup/interceptors
+	@mkdir -p backup/util
 
 # Compile source files
 $(OBJ_DIR)/%.o: %.m
@@ -109,6 +112,19 @@ install: all
 	@cp $(BIN_DIR)/$(BIN_NAME) ~/Library/Application\ Support/WindowControlInjector/
 	@echo "Installed to: ~/Library/Application Support/WindowControlInjector/"
 
+# Restore files from backup if needed
+restore:
+	# Check if backup files exist
+	@if [ -d backup ]; then \
+		echo "Restoring files from backup..."; \
+		mkdir -p src/util src/interceptors; \
+		cp -n backup/util/* src/util/ 2>/dev/null || true; \
+		cp -n backup/interceptors/* src/interceptors/ 2>/dev/null || true; \
+		echo "Files restored from backup."; \
+	else \
+		echo "No backup directory found."; \
+	fi
+
 # Clean
 clean:
 	rm -rf $(BUILD_DIR)
@@ -126,5 +142,6 @@ help:
 	@echo "  install  - Install to ~/Library/Application Support/WindowControlInjector/"
 	@echo "  clean    - Remove build files"
 	@echo "  help     - Show this help message"
+	@echo "  restore   - Restore original files from backup if needed"
 
-.PHONY: all directories debug release dist install clean help
+.PHONY: all directories debug release dist install clean help restore

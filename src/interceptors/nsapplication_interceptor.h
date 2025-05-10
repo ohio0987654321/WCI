@@ -2,8 +2,8 @@
  * @file nsapplication_interceptor.h
  * @brief NSApplication interceptor for WindowControlInjector
  *
- * This file defines the NSApplication interceptor, which intercepts NSApplication method
- * calls to implement Dock hiding and menu bar hiding features.
+ * This file defines the NSApplication interceptor that manages
+ * application-level behavior and implements the WCInterceptor protocol.
  */
 
 #ifndef NSAPPLICATION_INTERCEPTOR_H
@@ -11,34 +11,38 @@
 
 #import <Foundation/Foundation.h>
 #import <AppKit/AppKit.h>
+#import "interceptor_protocol.h"
 
 /**
  * @brief NSApplication interceptor class for WindowControlInjector
  *
- * This class handles the interception of NSApplication method calls to hide
- * the application from the Dock and status bar.
+ * This class handles the interception of NSApplication method calls to implement
+ * application-level controls and behaviors. It follows a singleton pattern and
+ * uses the improved method swizzling system. Conforms to the WCInterceptor protocol.
  */
-@interface WCNSApplicationInterceptor : NSObject
+@interface WCNSApplicationInterceptor : NSObject <WCInterceptor>
+
+// WCInterceptor protocol methods are declared in the protocol itself
+// We implement these methods:
+// + (instancetype)sharedInterceptor;
+// + (BOOL)install;
+// + (BOOL)uninstall;
+// + (BOOL)isInstalled;
+// + (NSString *)interceptorName;
+// + (NSString *)interceptorDescription;
+
+// Optional protocol methods we implement:
+// + (NSInteger)priority;
+// + (NSArray<Class> *)dependencies;
 
 /**
- * @brief Install the NSApplication interceptor
+ * @brief Apply protections to the application
  *
- * This method installs the NSApplication interceptor by swizzling methods
- * to implement Dock hiding and menu bar hiding.
- *
- * @return YES if the interceptor was installed successfully, NO otherwise
+ * This method applies protection measures to the NSApplication instance.
+ * It's called during installation and can be called manually to refresh
+ * protection settings.
  */
-+ (BOOL)install;
-
-/**
- * @brief Uninstall the NSApplication interceptor
- *
- * This method uninstalls the NSApplication interceptor by restoring original
- * method implementations.
- *
- * @return YES if the interceptor was uninstalled successfully, NO otherwise
- */
-+ (BOOL)uninstall;
+- (void)applyProtectionsToApplication;
 
 @end
 

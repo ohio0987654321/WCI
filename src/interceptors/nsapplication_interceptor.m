@@ -1,34 +1,574 @@
 /**
  * @file nsapplication_interceptor.m
- * @brief Implementation of the NSApplication interceptor for WindowControlInjector
+ * @brief Implementation of the NSApplication interceptor
  */
 
 #import "nsapplication_interceptor.h"
 #import "../util/logger.h"
-#import "../util/runtime_utils.h"
+#import "../util/method_swizzler.h"
+#import "../util/error_manager.h"
+#import "interceptor_registry.h"
+#import "nswindow_interceptor.h"
 #import <mach/mach_time.h>  // For mach_absolute_time()
 #import <os/lock.h>  // For os_unfair_lock
 
-// Store original method implementations
-static IMP gOriginalActivationPolicyIMP = NULL;
-static IMP gOriginalSetActivationPolicyIMP = NULL;
-static IMP gOriginalPresentationOptionsIMP = NULL;
-static IMP gOriginalSetPresentationOptionsIMP = NULL;
-static IMP gOriginalIsHiddenIMP = NULL;
-static IMP gOriginalSetHiddenIMP = NULL;
-static IMP gOriginalIsActiveIMP = NULL;
-static IMP gOriginalActivateIgnoringOtherAppsIMP = NULL;
-static IMP gOriginalOrderFrontStandardAboutPanelIMP = NULL;
-static IMP gOriginalHideIMP = NULL;
-static IMP gOriginalUnhideIMP = NULL;
-static IMP gOriginalBecomeActiveApplicationIMP = NULL;
+// Forward declarations of swizzled method implementations
+static NSApplicationActivationPolicy wc_activationPolicy(id self, SEL _cmd);
+static BOOL wc_setActivationPolicy(id self, SEL _cmd, NSApplicationActivationPolicy activationPolicy);
+static NSApplicationPresentationOptions wc_presentationOptions(id self, SEL _cmd);
+static void wc_setPresentationOptions(id self, SEL _cmd, NSApplicationPresentationOptions presentationOptions);
+static BOOL wc_isHidden(id self, SEL _cmd);
+static void wc_setHidden(id self, SEL _cmd, BOOL hidden);
+static BOOL wc_isActive(id self, SEL _cmd);
+static void wc_activateIgnoringOtherApps(id self, SEL _cmd, BOOL flag);
+static void wc_orderFrontStandardAboutPanel(id self, SEL _cmd, id sender);
+static void wc_hide(id self, SEL _cmd, id sender);
+static void wc_unhide(id self, SEL _cmd, id sender);
+static void wc_becomeActiveApplication(id self, SEL _cmd);
+
+// Application state tracking
+static BOOL gAppFullyLoaded = NO;
+static os_unfair_lock gAppSettingsLock = OS_UNFAIR_LOCK_INIT;
+static uint64_t gLastSettingsTime = 0;
+
+@implementation WCNSApplicationInterceptor {
+    // Private instance variables
+    BOOL _installed;
+    dispatch_source_t _appSettingsRefreshTimer;
+}
+
+#pragma mark - Class Load and Registration
+
++ (void)load {
+    // Automatically register with the registry at load time
+    [self registerInterceptor];
+}
+
++ (void)registerInterceptor {
+    // Register this interceptor with the registry
+    WCInterceptorRegistry *registry = [WCInterceptorRegistry sharedRegistry];
+    [registry registerInterceptor:self];
+
+    // Map to the application interceptor option
+    [registry mapInterceptor:self toOption:WCInterceptorOptionApplication];
+
+    [[WCLogger sharedLogger] logWithLevel:WCLogLevelDebug
+                                 category:@"Interception"
+                                     file:__FILE__
+                                     line:__LINE__
+                                 function:__PRETTY_FUNCTION__
+                                   format:@"NSApplication interceptor registered with registry"];
+}
+
+#pragma mark - WCInterceptor Protocol
+
++ (NSString *)interceptorName {
+    return @"NSApplicationInterceptor";
+}
+
++ (NSString *)interceptorDescription {
+    return @"Intercepts NSApplication methods to control application behavior, prevent focus stealing, and hide from Dock";
+}
+
++ (NSInteger)priority {
+    // Higher priority than window interceptor - app settings should be applied first
+    return 100;
+}
+
++ (NSArray<Class> *)dependencies {
+    // Depends on the window interceptor
+    return @[[WCNSWindowInterceptor class]];
+}
+
+#pragma mark - Initialization and Singleton Pattern
+
++ (instancetype)sharedInterceptor {
+    static WCNSApplicationInterceptor *instance = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        instance = [[self alloc] init];
+    });
+    return instance;
+}
+
+- (instancetype)init {
+    if (self = [super init]) {
+        _installed = NO;
+        _appSettingsRefreshTimer = nil;
+    }
+    return self;
+}
+
+#pragma mark - Installation and Uninstallation
+
++ (BOOL)install {
+    return [[self sharedInterceptor] installInterceptor];
+}
+
++ (BOOL)uninstall {
+    return [[self sharedInterceptor] uninstallInterceptor];
+}
+
++ (BOOL)isInstalled {
+    return [[self sharedInterceptor] isInterceptorInstalled];
+}
+
+- (BOOL)isInterceptorInstalled {
+    return _installed;
+}
+
+- (BOOL)installInterceptor {
+    // Don't install more than once
+    if (_installed) {
+        [[WCLogger sharedLogger] logWithLevel:WCLogLevelInfo
+                                     category:@"Interception"
+                                         file:__FILE__
+                                         line:__LINE__
+                                     function:__PRETTY_FUNCTION__
+                                       format:@"NSApplication interceptor already installed"];
+        return YES;
+    }
+
+    [[WCLogger sharedLogger] logWithLevel:WCLogLevelInfo
+                                 category:@"Interception"
+                                     file:__FILE__
+                                     line:__LINE__
+                                 function:__PRETTY_FUNCTION__
+                                   format:@"Installing NSApplication interceptor"];
+
+    BOOL success = YES;
+    Class nsApplicationClass = [NSApplication class];
+
+    // Apply settings immediately to NSApp
+    [self applyProtectionsToApplication];
+
+    // Set up a timer to periodically refresh application settings
+    if (_appSettingsRefreshTimer == nil) {
+        // Create timer on a separate high-priority queue to avoid main thread delays
+        dispatch_queue_t timerQueue = dispatch_queue_create("com.windowcontrolinjector.appTimer",
+                                                          DISPATCH_QUEUE_SERIAL);
+
+        _appSettingsRefreshTimer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER,
+                                                       0, 0, timerQueue);
+        if (_appSettingsRefreshTimer) {
+            // Apply settings every 1 second to ensure they stay applied
+            dispatch_source_set_timer(_appSettingsRefreshTimer,
+                                   dispatch_time(DISPATCH_TIME_NOW, 1 * NSEC_PER_SEC),
+                                   1 * NSEC_PER_SEC,
+                                   0.1 * NSEC_PER_SEC);
+
+            dispatch_source_set_event_handler(_appSettingsRefreshTimer, ^{
+                @autoreleasepool {
+                    // Run on main thread to safely interact with UI classes
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        @try {
+                            NSApplication *app = [NSApplication sharedApplication];
+                            if (app) {
+                                [self applyProtectionsToApplication];
+                            }
+                        } @catch (NSException *exception) {
+                            [[WCLogger sharedLogger] logWithLevel:WCLogLevelError
+                                                        category:@"Application"
+                                                            file:__FILE__
+                                                            line:__LINE__
+                                                        function:__PRETTY_FUNCTION__
+                                                          format:@"Exception in timer handler: %@", exception.reason];
+                        }
+                    });
+                }
+            });
+
+            // Handle cancellation to prevent crashes
+            dispatch_source_set_cancel_handler(_appSettingsRefreshTimer, ^{
+                [[WCLogger sharedLogger] logWithLevel:WCLogLevelInfo
+                                            category:@"Application"
+                                                file:__FILE__
+                                                line:__LINE__
+                                            function:__PRETTY_FUNCTION__
+                                              format:@"Application settings refresh timer cancelled"];
+            });
+
+            dispatch_resume(_appSettingsRefreshTimer);
+            [[WCLogger sharedLogger] logWithLevel:WCLogLevelInfo
+                                        category:@"Application"
+                                            file:__FILE__
+                                            line:__LINE__
+                                        function:__PRETTY_FUNCTION__
+                                          format:@"Started application settings refresh timer"];
+        }
+    }
+
+    // Register our swizzled method implementations using the method swizzler
+
+    // First, we need to add our custom implementations
+    const char *activationPolicyType = "i@:";
+    const char *setActivationPolicyType = "B@:i";
+    const char *presentationOptionsType = "Q@:";
+    const char *setPresentationOptionsType = "v@:Q";
+    const char *boolType = "B@:";
+    const char *setBoolType = "v@:B";
+    const char *voidType = "v@:";
+    const char *voidWithSenderType = "v@:@";
+
+    // Add methods with prefix "wc_" to the NSApplication class
+    [WCMethodSwizzler addMethodToClass:nsApplicationClass
+                              selector:@selector(wc_activationPolicy)
+                         implementation:(IMP)wc_activationPolicy
+                          typeEncoding:activationPolicyType];
+
+    [WCMethodSwizzler addMethodToClass:nsApplicationClass
+                              selector:@selector(wc_setActivationPolicy:)
+                         implementation:(IMP)wc_setActivationPolicy
+                          typeEncoding:setActivationPolicyType];
+
+    [WCMethodSwizzler addMethodToClass:nsApplicationClass
+                              selector:@selector(wc_presentationOptions)
+                         implementation:(IMP)wc_presentationOptions
+                          typeEncoding:presentationOptionsType];
+
+    [WCMethodSwizzler addMethodToClass:nsApplicationClass
+                              selector:@selector(wc_setPresentationOptions:)
+                         implementation:(IMP)wc_setPresentationOptions
+                          typeEncoding:setPresentationOptionsType];
+
+    [WCMethodSwizzler addMethodToClass:nsApplicationClass
+                              selector:@selector(wc_isHidden)
+                         implementation:(IMP)wc_isHidden
+                          typeEncoding:boolType];
+
+    [WCMethodSwizzler addMethodToClass:nsApplicationClass
+                              selector:@selector(wc_setHidden:)
+                         implementation:(IMP)wc_setHidden
+                          typeEncoding:setBoolType];
+
+    [WCMethodSwizzler addMethodToClass:nsApplicationClass
+                              selector:@selector(wc_isActive)
+                         implementation:(IMP)wc_isActive
+                          typeEncoding:boolType];
+
+    [WCMethodSwizzler addMethodToClass:nsApplicationClass
+                              selector:@selector(wc_activateIgnoringOtherApps:)
+                         implementation:(IMP)wc_activateIgnoringOtherApps
+                          typeEncoding:setBoolType];
+
+    [WCMethodSwizzler addMethodToClass:nsApplicationClass
+                              selector:@selector(wc_orderFrontStandardAboutPanel:)
+                         implementation:(IMP)wc_orderFrontStandardAboutPanel
+                          typeEncoding:voidWithSenderType];
+
+    [WCMethodSwizzler addMethodToClass:nsApplicationClass
+                              selector:@selector(wc_hide:)
+                         implementation:(IMP)wc_hide
+                          typeEncoding:voidWithSenderType];
+
+    [WCMethodSwizzler addMethodToClass:nsApplicationClass
+                              selector:@selector(wc_unhide:)
+                         implementation:(IMP)wc_unhide
+                          typeEncoding:voidWithSenderType];
+
+    [WCMethodSwizzler addMethodToClass:nsApplicationClass
+                              selector:@selector(wc_becomeActiveApplication)
+                         implementation:(IMP)wc_becomeActiveApplication
+                          typeEncoding:voidType];
+
+    // Then swizzle the original methods with our custom implementations
+
+    // Helper macro to safely swizzle methods only if they exist
+    #define SAFE_SWIZZLE(origSel, newSel, type) \
+        if ([WCMethodSwizzler class:nsApplicationClass implementsSelector:origSel ofType:type]) { \
+            if (![WCMethodSwizzler swizzleClass:nsApplicationClass \
+                                originalSelector:origSel \
+                             replacementSelector:newSel \
+                              implementationType:type]) { \
+                [[WCLogger sharedLogger] logWithLevel:WCLogLevelWarning \
+                                             category:@"Interception" \
+                                                 file:__FILE__ \
+                                                 line:__LINE__ \
+                                             function:__PRETTY_FUNCTION__ \
+                                               format:@"Failed to swizzle %@ in NSApplication", NSStringFromSelector(origSel)]; \
+                success = NO; \
+            } else { \
+                [[WCLogger sharedLogger] logWithLevel:WCLogLevelDebug \
+                                             category:@"Interception" \
+                                                 file:__FILE__ \
+                                                 line:__LINE__ \
+                                             function:__PRETTY_FUNCTION__ \
+                                               format:@"Successfully swizzled %@ in NSApplication", NSStringFromSelector(origSel)]; \
+            } \
+        } else { \
+            [[WCLogger sharedLogger] logWithLevel:WCLogLevelInfo \
+                                         category:@"Interception" \
+                                             file:__FILE__ \
+                                             line:__LINE__ \
+                                         function:__PRETTY_FUNCTION__ \
+                                           format:@"Method %@ not found in NSApplication, skipping swizzle", NSStringFromSelector(origSel)]; \
+        }
+
+    // Swizzle methods that exist
+    SAFE_SWIZZLE(@selector(activationPolicy), @selector(wc_activationPolicy), WCImplementationTypeMethod);
+    SAFE_SWIZZLE(@selector(setActivationPolicy:), @selector(wc_setActivationPolicy:), WCImplementationTypeMethod);
+    SAFE_SWIZZLE(@selector(presentationOptions), @selector(wc_presentationOptions), WCImplementationTypeMethod);
+    SAFE_SWIZZLE(@selector(setPresentationOptions:), @selector(wc_setPresentationOptions:), WCImplementationTypeMethod);
+    SAFE_SWIZZLE(@selector(isHidden), @selector(wc_isHidden), WCImplementationTypeMethod);
+    SAFE_SWIZZLE(@selector(setHidden:), @selector(wc_setHidden:), WCImplementationTypeMethod);
+    SAFE_SWIZZLE(@selector(isActive), @selector(wc_isActive), WCImplementationTypeMethod);
+    SAFE_SWIZZLE(@selector(activateIgnoringOtherApps:), @selector(wc_activateIgnoringOtherApps:), WCImplementationTypeMethod);
+    SAFE_SWIZZLE(@selector(orderFrontStandardAboutPanel:), @selector(wc_orderFrontStandardAboutPanel:), WCImplementationTypeMethod);
+    SAFE_SWIZZLE(@selector(hide:), @selector(wc_hide:), WCImplementationTypeMethod);
+    SAFE_SWIZZLE(@selector(unhide:), @selector(wc_unhide:), WCImplementationTypeMethod);
+    SAFE_SWIZZLE(@selector(becomeActiveApplication), @selector(wc_becomeActiveApplication), WCImplementationTypeMethod);
+
+    #undef SAFE_SWIZZLE
+
+    if (success) {
+        [[WCLogger sharedLogger] logWithLevel:WCLogLevelInfo
+                                     category:@"Interception"
+                                         file:__FILE__
+                                         line:__LINE__
+                                     function:__PRETTY_FUNCTION__
+                                       format:@"NSApplication interceptor installed successfully"];
+        _installed = YES;
+    } else {
+        [[WCLogger sharedLogger] logWithLevel:WCLogLevelError
+                                     category:@"Interception"
+                                         file:__FILE__
+                                         line:__LINE__
+                                     function:__PRETTY_FUNCTION__
+                                       format:@"Failed to install NSApplication interceptor"];
+    }
+
+    return success;
+}
+
+- (BOOL)uninstallInterceptor {
+    if (!_installed) {
+        [[WCLogger sharedLogger] logWithLevel:WCLogLevelInfo
+                                     category:@"Interception"
+                                         file:__FILE__
+                                         line:__LINE__
+                                     function:__PRETTY_FUNCTION__
+                                       format:@"NSApplication interceptor not installed, nothing to uninstall"];
+        return YES;
+    }
+
+    [[WCLogger sharedLogger] logWithLevel:WCLogLevelInfo
+                                 category:@"Interception"
+                                     file:__FILE__
+                                     line:__LINE__
+                                 function:__PRETTY_FUNCTION__
+                                   format:@"Uninstalling NSApplication interceptor"];
+
+    // Stop the timer if it's running
+    if (_appSettingsRefreshTimer) {
+        dispatch_source_cancel(_appSettingsRefreshTimer);
+        _appSettingsRefreshTimer = nil;
+        [[WCLogger sharedLogger] logWithLevel:WCLogLevelDebug
+                                     category:@"Application"
+                                         file:__FILE__
+                                         line:__LINE__
+                                     function:__PRETTY_FUNCTION__
+                                       format:@"Stopped application settings refresh timer"];
+    }
+
+    // Reset global state
+    gAppFullyLoaded = NO;
+
+    Class nsApplicationClass = [NSApplication class];
+    BOOL success = YES;
+
+    // Unswizzle all our swizzled methods
+    #define SAFE_UNSWIZZLE(origSel, newSel, type) \
+        if ([WCMethodSwizzler class:nsApplicationClass implementsSelector:origSel ofType:type]) { \
+            if (![WCMethodSwizzler unswizzleClass:nsApplicationClass \
+                                 originalSelector:origSel \
+                              replacementSelector:newSel \
+                               implementationType:type]) { \
+                [[WCLogger sharedLogger] logWithLevel:WCLogLevelWarning \
+                                             category:@"Interception" \
+                                                 file:__FILE__ \
+                                                 line:__LINE__ \
+                                             function:__PRETTY_FUNCTION__ \
+                                               format:@"Failed to unswizzle %@ in NSApplication", NSStringFromSelector(origSel)]; \
+                success = NO; \
+            } else { \
+                [[WCLogger sharedLogger] logWithLevel:WCLogLevelDebug \
+                                             category:@"Interception" \
+                                                 file:__FILE__ \
+                                                 line:__LINE__ \
+                                             function:__PRETTY_FUNCTION__ \
+                                               format:@"Successfully unswizzled %@ in NSApplication", NSStringFromSelector(origSel)]; \
+            } \
+        }
+
+    // Unswizzle all methods we swizzled
+    SAFE_UNSWIZZLE(@selector(activationPolicy), @selector(wc_activationPolicy), WCImplementationTypeMethod);
+    SAFE_UNSWIZZLE(@selector(setActivationPolicy:), @selector(wc_setActivationPolicy:), WCImplementationTypeMethod);
+    SAFE_UNSWIZZLE(@selector(presentationOptions), @selector(wc_presentationOptions), WCImplementationTypeMethod);
+    SAFE_UNSWIZZLE(@selector(setPresentationOptions:), @selector(wc_setPresentationOptions:), WCImplementationTypeMethod);
+    SAFE_UNSWIZZLE(@selector(isHidden), @selector(wc_isHidden), WCImplementationTypeMethod);
+    SAFE_UNSWIZZLE(@selector(setHidden:), @selector(wc_setHidden:), WCImplementationTypeMethod);
+    SAFE_UNSWIZZLE(@selector(isActive), @selector(wc_isActive), WCImplementationTypeMethod);
+    SAFE_UNSWIZZLE(@selector(activateIgnoringOtherApps:), @selector(wc_activateIgnoringOtherApps:), WCImplementationTypeMethod);
+    SAFE_UNSWIZZLE(@selector(orderFrontStandardAboutPanel:), @selector(wc_orderFrontStandardAboutPanel:), WCImplementationTypeMethod);
+    SAFE_UNSWIZZLE(@selector(hide:), @selector(wc_hide:), WCImplementationTypeMethod);
+    SAFE_UNSWIZZLE(@selector(unhide:), @selector(wc_unhide:), WCImplementationTypeMethod);
+    SAFE_UNSWIZZLE(@selector(becomeActiveApplication), @selector(wc_becomeActiveApplication), WCImplementationTypeMethod);
+
+    #undef SAFE_UNSWIZZLE
+
+    if (success) {
+        [[WCLogger sharedLogger] logWithLevel:WCLogLevelInfo
+                                     category:@"Interception"
+                                         file:__FILE__
+                                         line:__LINE__
+                                     function:__PRETTY_FUNCTION__
+                                       format:@"NSApplication interceptor uninstalled successfully"];
+        _installed = NO;
+    } else {
+        [[WCLogger sharedLogger] logWithLevel:WCLogLevelError
+                                     category:@"Interception"
+                                         file:__FILE__
+                                         line:__LINE__
+                                     function:__PRETTY_FUNCTION__
+                                       format:@"Failed to uninstall NSApplication interceptor completely"];
+    }
+
+    return success;
+}
+
+#pragma mark - Application Protections
+
+- (void)applyProtectionsToApplication {
+    @try {
+        // Avoid potential race conditions with a lock
+        os_unfair_lock_lock(&gAppSettingsLock);
+
+        // Don't apply settings too frequently (throttle to once per second)
+        uint64_t now = mach_absolute_time();
+        if (now - gLastSettingsTime < 1000000000) { // ~1 second in nanoseconds
+            os_unfair_lock_unlock(&gAppSettingsLock);
+            return;
+        }
+        gLastSettingsTime = now;
+
+        [[WCLogger sharedLogger] logWithLevel:WCLogLevelDebug
+                                     category:@"Application"
+                                         file:__FILE__
+                                         line:__LINE__
+                                     function:__PRETTY_FUNCTION__
+                                       format:@"Applying settings to NSApp"];
+
+        NSApplication *app = [NSApplication sharedApplication];
+
+        // Force activation policy - use accessory to allow proper initialization
+        if ([app respondsToSelector:@selector(setActivationPolicy:)]) {
+            [[WCLogger sharedLogger] logWithLevel:WCLogLevelDebug
+                                         category:@"Application"
+                                             file:__FILE__
+                                             line:__LINE__
+                                         function:__PRETTY_FUNCTION__
+                                           format:@"Setting activationPolicy = NSApplicationActivationPolicyAccessory"];
+            BOOL result = [app setActivationPolicy:NSApplicationActivationPolicyAccessory];
+            [[WCLogger sharedLogger] logWithLevel:WCLogLevelDebug
+                                         category:@"Application"
+                                             file:__FILE__
+                                             line:__LINE__
+                                         function:__PRETTY_FUNCTION__
+                                           format:@"setActivationPolicy result: %d", result];
+        } else {
+            [[WCLogger sharedLogger] logWithLevel:WCLogLevelDebug
+                                         category:@"Application"
+                                             file:__FILE__
+                                             line:__LINE__
+                                         function:__PRETTY_FUNCTION__
+                                           format:@"NSApp does not respond to setActivationPolicy"];
+        }
+
+        // Apply presentation options - with more balanced approach
+        if ([app respondsToSelector:@selector(setPresentationOptions:)]) {
+            // Less aggressive options for better stability:
+            NSApplicationPresentationOptions options = NSApplicationPresentationHideDock |
+                                                       NSApplicationPresentationDisableForceQuit;
+
+            [[WCLogger sharedLogger] logWithLevel:WCLogLevelDebug
+                                        category:@"Application"
+                                            file:__FILE__
+                                            line:__LINE__
+                                        function:__PRETTY_FUNCTION__
+                                          format:@"Setting presentation options: %lu", (unsigned long)options];
+            [app setPresentationOptions:options];
+        }
+
+        // Print current settings
+        if ([app respondsToSelector:@selector(activationPolicy)]) {
+            NSApplicationActivationPolicy policy = [app activationPolicy];
+            [[WCLogger sharedLogger] logWithLevel:WCLogLevelDebug
+                                        category:@"Application"
+                                            file:__FILE__
+                                            line:__LINE__
+                                        function:__PRETTY_FUNCTION__
+                                          format:@"Current activationPolicy: %d", (int)policy];
+        }
+
+        if ([app respondsToSelector:@selector(presentationOptions)]) {
+            NSApplicationPresentationOptions options = [app presentationOptions];
+            [[WCLogger sharedLogger] logWithLevel:WCLogLevelDebug
+                                        category:@"Application"
+                                            file:__FILE__
+                                            line:__LINE__
+                                        function:__PRETTY_FUNCTION__
+                                          format:@"Current presentationOptions: %lu", (unsigned long)options];
+        }
+
+        os_unfair_lock_unlock(&gAppSettingsLock);
+
+        // Mark as fully loaded after the first settings application
+        if (!gAppFullyLoaded) {
+            // Delay marking as fully loaded to avoid race conditions during startup
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 1 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+                gAppFullyLoaded = YES;
+                [[WCLogger sharedLogger] logWithLevel:WCLogLevelDebug
+                                            category:@"Application"
+                                                file:__FILE__
+                                                line:__LINE__
+                                            function:__PRETTY_FUNCTION__
+                                              format:@"App marked as fully loaded"];
+            });
+        }
+    } @catch (NSException *exception) {
+        os_unfair_lock_unlock(&gAppSettingsLock);
+        [[WCLogger sharedLogger] logWithLevel:WCLogLevelError
+                                     category:@"Application"
+                                         file:__FILE__
+                                         line:__LINE__
+                                     function:__PRETTY_FUNCTION__
+                                       format:@"Exception in applyProtectionsToApplication: %@", exception.reason];
+    }
+}
+
+#pragma mark - Cleanup
+
+- (void)dealloc {
+    // If our timer is still running, stop it
+    if (_appSettingsRefreshTimer) {
+        dispatch_source_cancel(_appSettingsRefreshTimer);
+        _appSettingsRefreshTimer = nil;
+    }
+}
+
+@end
 
 #pragma mark - Swizzled Method Implementations
 
 // Swizzled activationPolicy getter
 static NSApplicationActivationPolicy wc_activationPolicy(id self, SEL _cmd) {
     // Override: Use accessory policy to hide from Dock while still allowing init
-    printf("[WindowControlInjector] Intercepted activationPolicy call, forcing NSApplicationActivationPolicyAccessory\n");
+    [[WCLogger sharedLogger] logWithLevel:WCLogLevelDebug
+                                 category:@"Application"
+                                     file:__FILE__
+                                     line:__LINE__
+                                 function:__PRETTY_FUNCTION__
+                                   format:@"Intercepted activationPolicy call, forcing NSApplicationActivationPolicyAccessory"];
     return NSApplicationActivationPolicyAccessory;
 }
 
@@ -36,11 +576,19 @@ static NSApplicationActivationPolicy wc_activationPolicy(id self, SEL _cmd) {
 static BOOL wc_setActivationPolicy(id self, SEL _cmd, NSApplicationActivationPolicy activationPolicy) {
     // Override: Always set to accessory policy to hide from Dock
     activationPolicy = NSApplicationActivationPolicyAccessory;
-    printf("[WindowControlInjector] Forcing activation policy to NSApplicationActivationPolicyAccessory\n");
+    [[WCLogger sharedLogger] logWithLevel:WCLogLevelDebug
+                                 category:@"Application"
+                                     file:__FILE__
+                                     line:__LINE__
+                                 function:__PRETTY_FUNCTION__
+                                   format:@"Forcing activation policy to NSApplicationActivationPolicyAccessory"];
 
     // Call original implementation
-    if (gOriginalSetActivationPolicyIMP) {
-        return ((BOOL (*)(id, SEL, NSApplicationActivationPolicy))gOriginalSetActivationPolicyIMP)(self, _cmd, activationPolicy);
+    IMP originalImp = [WCMethodSwizzler originalImplementationForClass:[self class]
+                                                              selector:@selector(setActivationPolicy:)
+                                                    implementationType:WCImplementationTypeMethod];
+    if (originalImp) {
+        return ((BOOL (*)(id, SEL, NSApplicationActivationPolicy))originalImp)(self, _cmd, activationPolicy);
     }
 
     return YES; // Default to success if original implementation is not available
@@ -52,7 +600,13 @@ static NSApplicationPresentationOptions wc_presentationOptions(id self, SEL _cmd
     NSApplicationPresentationOptions options = NSApplicationPresentationHideDock |
                                                NSApplicationPresentationDisableForceQuit;
 
-    printf("[WindowControlInjector] Modified presentation options: %lu (hide dock + disable force quit)\n", (unsigned long)options);
+    [[WCLogger sharedLogger] logWithLevel:WCLogLevelDebug
+                                 category:@"Application"
+                                     file:__FILE__
+                                     line:__LINE__
+                                 function:__PRETTY_FUNCTION__
+                                   format:@"Modified presentation options: %lu (hide dock + disable force quit)",
+                                          (unsigned long)options];
     return options;
 }
 
@@ -62,19 +616,30 @@ static void wc_setPresentationOptions(id self, SEL _cmd, NSApplicationPresentati
     NSApplicationPresentationOptions enforcedOptions = NSApplicationPresentationHideDock |
                                                        NSApplicationPresentationDisableForceQuit;
 
-    printf("[WindowControlInjector] Forcing presentation options: %lu\n", (unsigned long)enforcedOptions);
+    [[WCLogger sharedLogger] logWithLevel:WCLogLevelDebug
+                                 category:@"Application"
+                                     file:__FILE__
+                                     line:__LINE__
+                                 function:__PRETTY_FUNCTION__
+                                   format:@"Forcing presentation options: %lu", (unsigned long)enforcedOptions];
 
     // Call original implementation with our options
-    if (gOriginalSetPresentationOptionsIMP) {
-        ((void (*)(id, SEL, NSApplicationPresentationOptions))gOriginalSetPresentationOptionsIMP)(self, _cmd, enforcedOptions);
+    IMP originalImp = [WCMethodSwizzler originalImplementationForClass:[self class]
+                                                              selector:@selector(setPresentationOptions:)
+                                                    implementationType:WCImplementationTypeMethod];
+    if (originalImp) {
+        ((void (*)(id, SEL, NSApplicationPresentationOptions))originalImp)(self, _cmd, enforcedOptions);
     }
 }
 
 // Swizzled isHidden getter
 static BOOL wc_isHidden(id self, SEL _cmd) {
     // Call original implementation
-    if (gOriginalIsHiddenIMP) {
-        return ((BOOL (*)(id, SEL))gOriginalIsHiddenIMP)(self, _cmd);
+    IMP originalImp = [WCMethodSwizzler originalImplementationForClass:[self class]
+                                                              selector:@selector(isHidden)
+                                                    implementationType:WCImplementationTypeMethod];
+    if (originalImp) {
+        return ((BOOL (*)(id, SEL))originalImp)(self, _cmd);
     }
     return NO;
 }
@@ -82,8 +647,11 @@ static BOOL wc_isHidden(id self, SEL _cmd) {
 // Swizzled setHidden: setter
 static void wc_setHidden(id self, SEL _cmd, BOOL hidden) {
     // Call original implementation
-    if (gOriginalSetHiddenIMP) {
-        ((void (*)(id, SEL, BOOL))gOriginalSetHiddenIMP)(self, _cmd, hidden);
+    IMP originalImp = [WCMethodSwizzler originalImplementationForClass:[self class]
+                                                              selector:@selector(setHidden:)
+                                                    implementationType:WCImplementationTypeMethod];
+    if (originalImp) {
+        ((void (*)(id, SEL, BOOL))originalImp)(self, _cmd, hidden);
     }
 }
 
@@ -91,14 +659,24 @@ static void wc_setHidden(id self, SEL _cmd, BOOL hidden) {
 static BOOL wc_isActive(id self, SEL _cmd) {
     // Always report as active so the app thinks it's running normally
     // but don't actually make it active at the system level
-    printf("[WindowControlInjector] Intercepted isActive, returning YES without stealing focus\n");
+    [[WCLogger sharedLogger] logWithLevel:WCLogLevelDebug
+                                 category:@"Application"
+                                     file:__FILE__
+                                     line:__LINE__
+                                 function:__PRETTY_FUNCTION__
+                                   format:@"Intercepted isActive, returning YES without stealing focus"];
     return YES;
 }
 
 // Swizzled activateIgnoringOtherApps: method
 static void wc_activateIgnoringOtherApps(id self, SEL _cmd, BOOL flag) {
     // Don't activate the app - this prevents stealing focus
-    printf("[WindowControlInjector] Blocked activateIgnoringOtherApps: to prevent focus stealing\n");
+    [[WCLogger sharedLogger] logWithLevel:WCLogLevelDebug
+                                 category:@"Application"
+                                     file:__FILE__
+                                     line:__LINE__
+                                 function:__PRETTY_FUNCTION__
+                                   format:@"Blocked activateIgnoringOtherApps: to prevent focus stealing"];
 
     // Don't call original implementation to avoid activation
     // This prevents our app from stealing focus from text editors or other apps
@@ -107,337 +685,46 @@ static void wc_activateIgnoringOtherApps(id self, SEL _cmd, BOOL flag) {
 // Swizzled orderFrontStandardAboutPanel: method
 static void wc_orderFrontStandardAboutPanel(id self, SEL _cmd, id sender) {
     // Call original implementation
-    if (gOriginalOrderFrontStandardAboutPanelIMP) {
-        ((void (*)(id, SEL, id))gOriginalOrderFrontStandardAboutPanelIMP)(self, _cmd, sender);
+    IMP originalImp = [WCMethodSwizzler originalImplementationForClass:[self class]
+                                                              selector:@selector(orderFrontStandardAboutPanel:)
+                                                    implementationType:WCImplementationTypeMethod];
+    if (originalImp) {
+        ((void (*)(id, SEL, id))originalImp)(self, _cmd, sender);
     }
 }
 
 // Swizzled hide: method
 static void wc_hide(id self, SEL _cmd, id sender) {
     // Call original implementation
-    if (gOriginalHideIMP) {
-        ((void (*)(id, SEL, id))gOriginalHideIMP)(self, _cmd, sender);
+    IMP originalImp = [WCMethodSwizzler originalImplementationForClass:[self class]
+                                                              selector:@selector(hide:)
+                                                    implementationType:WCImplementationTypeMethod];
+    if (originalImp) {
+        ((void (*)(id, SEL, id))originalImp)(self, _cmd, sender);
     }
 }
 
 // Swizzled unhide: method
 static void wc_unhide(id self, SEL _cmd, id sender) {
     // Call original implementation
-    if (gOriginalUnhideIMP) {
-        ((void (*)(id, SEL, id))gOriginalUnhideIMP)(self, _cmd, sender);
+    IMP originalImp = [WCMethodSwizzler originalImplementationForClass:[self class]
+                                                              selector:@selector(unhide:)
+                                                    implementationType:WCImplementationTypeMethod];
+    if (originalImp) {
+        ((void (*)(id, SEL, id))originalImp)(self, _cmd, sender);
     }
 }
 
 // Additional override for becomeActiveApplication
 static void wc_becomeActiveApplication(id self, SEL _cmd) {
     // Block becoming the active application to avoid stealing focus
-    printf("[WindowControlInjector] Blocked becomeActiveApplication to prevent focus stealing\n");
+    [[WCLogger sharedLogger] logWithLevel:WCLogLevelDebug
+                                 category:@"Application"
+                                     file:__FILE__
+                                     line:__LINE__
+                                 function:__PRETTY_FUNCTION__
+                                   format:@"Blocked becomeActiveApplication to prevent focus stealing"];
 
     // Don't call the original implementation as this would make our app active
     // We want to avoid stealing focus from text editors or other apps
 }
-
-// Track when the app is fully loaded
-static BOOL gAppFullyLoaded = NO;
-static os_unfair_lock gAppSettingsLock = OS_UNFAIR_LOCK_INIT;
-static uint64_t gLastSettingsTime = 0;
-
-// Global timer reference to force application settings
-static dispatch_source_t gAppSettingsRefreshTimer = nil;
-
-// Function to force application settings
-static void ForceApplicationSettings(NSApplication *app) {
-    // Avoid potential race conditions with a lock
-    os_unfair_lock_lock(&gAppSettingsLock);
-
-    // Don't apply settings too frequently (throttle to once per second)
-    uint64_t now = mach_absolute_time();
-    if (now - gLastSettingsTime < 1000000000) { // ~1 second in nanoseconds
-        os_unfair_lock_unlock(&gAppSettingsLock);
-        return;
-    }
-    gLastSettingsTime = now;
-
-    printf("[WindowControlInjector] Applying application settings for NSApp\n");
-
-    // Force activation policy - use accessory to allow proper initialization
-    if ([app respondsToSelector:@selector(setActivationPolicy:)]) {
-        printf("[WindowControlInjector] Setting activationPolicy = NSApplicationActivationPolicyAccessory\n");
-        BOOL result = [app setActivationPolicy:NSApplicationActivationPolicyAccessory];
-        printf("[WindowControlInjector] setActivationPolicy result: %d\n", result);
-    } else {
-        printf("[WindowControlInjector] NSApp does not respond to setActivationPolicy\n");
-    }
-
-    // Apply presentation options - with more balanced approach
-    if ([app respondsToSelector:@selector(setPresentationOptions:)]) {
-        // Less aggressive options for better stability:
-        NSApplicationPresentationOptions options = NSApplicationPresentationHideDock |
-                                                   NSApplicationPresentationDisableForceQuit;
-
-        printf("[WindowControlInjector] Setting presentation options: %lu\n", (unsigned long)options);
-        [app setPresentationOptions:options];
-    }
-
-    // Print current settings
-    if ([app respondsToSelector:@selector(activationPolicy)]) {
-        NSApplicationActivationPolicy policy = [app activationPolicy];
-        printf("[WindowControlInjector] Current activationPolicy: %d\n", (int)policy);
-    }
-
-    if ([app respondsToSelector:@selector(presentationOptions)]) {
-        NSApplicationPresentationOptions options = [app presentationOptions];
-        printf("[WindowControlInjector] Current presentationOptions: %lu\n", (unsigned long)options);
-    }
-
-    os_unfair_lock_unlock(&gAppSettingsLock);
-
-    // Mark as fully loaded after the first settings application
-    if (!gAppFullyLoaded) {
-        // Delay marking as fully loaded to avoid race conditions during startup
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 1 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
-            gAppFullyLoaded = YES;
-        });
-    }
-}
-
-@implementation WCNSApplicationInterceptor
-
-// Static flag to prevent multiple installations
-static BOOL gInstalled = NO;
-
-+ (BOOL)install {
-    // Don't install more than once
-    if (gInstalled) {
-        printf("[WindowControlInjector] NSApplication interceptor already installed\n");
-        WCLogInfo(@"NSApplication interceptor already installed");
-        return YES;
-    }
-
-    printf("[WindowControlInjector] Installing NSApplication interceptor\n");
-    WCLogInfo(@"Installing NSApplication interceptor");
-
-    Class nsApplicationClass = [NSApplication class];
-
-    // Apply settings immediately to NSApp
-    NSApplication *app = [NSApplication sharedApplication];
-    ForceApplicationSettings(app);
-
-    @autoreleasepool {
-        // Apply settings immediately for faster effect
-        ForceApplicationSettings(app);
-
-        // Safer timer creation using a more structured approach
-        if (gAppSettingsRefreshTimer == nil) {
-            // Create timer on a separate high-priority queue to avoid main thread delays
-            dispatch_queue_t timerQueue = dispatch_queue_create("com.windowcontrolinjector.timer",
-                                                              DISPATCH_QUEUE_SERIAL);
-
-            gAppSettingsRefreshTimer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER,
-                                                           0, 0, timerQueue);
-
-            if (gAppSettingsRefreshTimer) {
-                // Apply settings more frequently (every 1 second) to ensure they stay applied
-                dispatch_source_set_timer(gAppSettingsRefreshTimer,
-                                       dispatch_time(DISPATCH_TIME_NOW, 1 * NSEC_PER_SEC),
-                                       1 * NSEC_PER_SEC,
-                                       0.1 * NSEC_PER_SEC);
-
-                dispatch_source_set_event_handler(gAppSettingsRefreshTimer, ^{
-                    @autoreleasepool {
-                        // Run on main thread to safely interact with UI classes
-                        dispatch_async(dispatch_get_main_queue(), ^{
-                            NSApplication *currentApp = [NSApplication sharedApplication];
-                            if (currentApp) {
-                                ForceApplicationSettings(currentApp);
-                            }
-                        });
-                    }
-                });
-
-                // Handle cancellation to prevent crashes
-                dispatch_source_set_cancel_handler(gAppSettingsRefreshTimer, ^{
-                    printf("[WindowControlInjector] Settings refresh timer cancelled\n");
-                });
-
-                dispatch_resume(gAppSettingsRefreshTimer);
-                printf("[WindowControlInjector] Started application settings refresh timer\n");
-            }
-        }
-    }
-
-    // Store original implementations
-    gOriginalActivationPolicyIMP = WCGetMethodImplementation(nsApplicationClass, @selector(activationPolicy));
-    gOriginalSetActivationPolicyIMP = WCGetMethodImplementation(nsApplicationClass, @selector(setActivationPolicy:));
-    gOriginalPresentationOptionsIMP = WCGetMethodImplementation(nsApplicationClass, @selector(presentationOptions));
-    gOriginalSetPresentationOptionsIMP = WCGetMethodImplementation(nsApplicationClass, @selector(setPresentationOptions:));
-    gOriginalIsHiddenIMP = WCGetMethodImplementation(nsApplicationClass, @selector(isHidden));
-    gOriginalSetHiddenIMP = WCGetMethodImplementation(nsApplicationClass, @selector(setHidden:));
-    gOriginalIsActiveIMP = WCGetMethodImplementation(nsApplicationClass, @selector(isActive));
-    gOriginalActivateIgnoringOtherAppsIMP = WCGetMethodImplementation(nsApplicationClass, @selector(activateIgnoringOtherApps:));
-    gOriginalOrderFrontStandardAboutPanelIMP = WCGetMethodImplementation(nsApplicationClass, @selector(orderFrontStandardAboutPanel:));
-    gOriginalHideIMP = WCGetMethodImplementation(nsApplicationClass, @selector(hide:));
-    gOriginalUnhideIMP = WCGetMethodImplementation(nsApplicationClass, @selector(unhide:));
-    gOriginalBecomeActiveApplicationIMP = WCGetMethodImplementation(nsApplicationClass, @selector(becomeActiveApplication));
-
-    // First, register our swizzled method implementations with the runtime
-    WCAddMethod(nsApplicationClass, @selector(wc_activationPolicy), (IMP)wc_activationPolicy, "i@:");
-    WCAddMethod(nsApplicationClass, @selector(wc_setActivationPolicy:), (IMP)wc_setActivationPolicy, "B@:i");
-    WCAddMethod(nsApplicationClass, @selector(wc_presentationOptions), (IMP)wc_presentationOptions, "Q@:");
-    WCAddMethod(nsApplicationClass, @selector(wc_setPresentationOptions:), (IMP)wc_setPresentationOptions, "v@:Q");
-    WCAddMethod(nsApplicationClass, @selector(wc_isHidden), (IMP)wc_isHidden, "B@:");
-    WCAddMethod(nsApplicationClass, @selector(wc_setHidden:), (IMP)wc_setHidden, "v@:B");
-    WCAddMethod(nsApplicationClass, @selector(wc_isActive), (IMP)wc_isActive, "B@:");
-    WCAddMethod(nsApplicationClass, @selector(wc_activateIgnoringOtherApps:), (IMP)wc_activateIgnoringOtherApps, "v@:B");
-    WCAddMethod(nsApplicationClass, @selector(wc_orderFrontStandardAboutPanel:), (IMP)wc_orderFrontStandardAboutPanel, "v@:@");
-    WCAddMethod(nsApplicationClass, @selector(wc_hide:), (IMP)wc_hide, "v@:@");
-    WCAddMethod(nsApplicationClass, @selector(wc_unhide:), (IMP)wc_unhide, "v@:@");
-    WCAddMethod(nsApplicationClass, @selector(wc_becomeActiveApplication), (IMP)wc_becomeActiveApplication, "v@:");
-
-    // Only swizzle methods that exist and are not already swizzled
-    BOOL success = YES;
-
-    // Helper macro to safely swizzle methods only if they exist
-    // Use a better swizzling approach that's more reliable
-    #define SAFE_SWIZZLE(origSel, newSel) \
-        if (class_getInstanceMethod(nsApplicationClass, origSel)) { \
-            @try { \
-                BOOL swizzleResult = WCSwizzleMethod(nsApplicationClass, origSel, newSel); \
-                success &= swizzleResult; \
-                if (!swizzleResult) { \
-                    WCLogWarning(@"Failed to swizzle %@ in NSApplication", NSStringFromSelector(origSel)); \
-                } else { \
-                    WCLogDebug(@"Successfully swizzled %@ in NSApplication", NSStringFromSelector(origSel)); \
-                } \
-            } @catch (NSException *exception) { \
-                printf("[WindowControlInjector] Exception during swizzling %s: %s\n", \
-                      sel_getName(origSel), [[exception description] UTF8String]); \
-                WCLogError(@"Exception during swizzling %@: %@", \
-                         NSStringFromSelector(origSel), [exception description]); \
-                success = NO; \
-            } \
-        } else { \
-            WCLogInfo(@"Method %@ not found in NSApplication, skipping swizzle", NSStringFromSelector(origSel)); \
-        }
-
-    // Swizzle methods that exist
-    SAFE_SWIZZLE(@selector(activationPolicy), @selector(wc_activationPolicy));
-    SAFE_SWIZZLE(@selector(setActivationPolicy:), @selector(wc_setActivationPolicy:));
-    SAFE_SWIZZLE(@selector(presentationOptions), @selector(wc_presentationOptions));
-    SAFE_SWIZZLE(@selector(setPresentationOptions:), @selector(wc_setPresentationOptions:));
-    SAFE_SWIZZLE(@selector(isHidden), @selector(wc_isHidden));
-    SAFE_SWIZZLE(@selector(setHidden:), @selector(wc_setHidden:));
-    SAFE_SWIZZLE(@selector(isActive), @selector(wc_isActive));
-    SAFE_SWIZZLE(@selector(activateIgnoringOtherApps:), @selector(wc_activateIgnoringOtherApps:));
-    SAFE_SWIZZLE(@selector(orderFrontStandardAboutPanel:), @selector(wc_orderFrontStandardAboutPanel:));
-    SAFE_SWIZZLE(@selector(hide:), @selector(wc_hide:));
-    SAFE_SWIZZLE(@selector(unhide:), @selector(wc_unhide:));
-    SAFE_SWIZZLE(@selector(becomeActiveApplication), @selector(wc_becomeActiveApplication));
-
-    #undef SAFE_SWIZZLE
-
-    if (success) {
-        printf("[WindowControlInjector] NSApplication interceptor installed successfully\n");
-        WCLogInfo(@"NSApplication interceptor installed successfully");
-        gInstalled = YES;
-    } else {
-        printf("[WindowControlInjector] Failed to install NSApplication interceptor\n");
-        WCLogError(@"Failed to install NSApplication interceptor");
-    }
-
-    return success;
-}
-
-+ (BOOL)uninstall {
-    printf("[WindowControlInjector] Uninstalling NSApplication interceptor\n");
-    WCLogInfo(@"Uninstalling NSApplication interceptor");
-
-    // Stop the timer safely with synchronized access
-    if (gAppSettingsRefreshTimer) {
-        dispatch_source_cancel(gAppSettingsRefreshTimer);
-        // Reset timer to nil after it's been cancelled
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.5 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
-            gAppSettingsRefreshTimer = nil;
-            printf("[WindowControlInjector] Stopped application settings refresh timer\n");
-        });
-    }
-
-    // Reset global state
-    gAppFullyLoaded = NO;
-
-    Class nsApplicationClass = [NSApplication class];
-
-    // Replace swizzled implementations with original ones
-    BOOL success = YES;
-
-    if (gOriginalActivationPolicyIMP) {
-        success &= (WCReplaceMethod(nsApplicationClass, @selector(activationPolicy), gOriginalActivationPolicyIMP) != NULL);
-        gOriginalActivationPolicyIMP = NULL;
-    }
-
-    if (gOriginalSetActivationPolicyIMP) {
-        success &= (WCReplaceMethod(nsApplicationClass, @selector(setActivationPolicy:), gOriginalSetActivationPolicyIMP) != NULL);
-        gOriginalSetActivationPolicyIMP = NULL;
-    }
-
-    if (gOriginalPresentationOptionsIMP) {
-        success &= (WCReplaceMethod(nsApplicationClass, @selector(presentationOptions), gOriginalPresentationOptionsIMP) != NULL);
-        gOriginalPresentationOptionsIMP = NULL;
-    }
-
-    if (gOriginalSetPresentationOptionsIMP) {
-        success &= (WCReplaceMethod(nsApplicationClass, @selector(setPresentationOptions:), gOriginalSetPresentationOptionsIMP) != NULL);
-        gOriginalSetPresentationOptionsIMP = NULL;
-    }
-
-    if (gOriginalIsHiddenIMP) {
-        success &= (WCReplaceMethod(nsApplicationClass, @selector(isHidden), gOriginalIsHiddenIMP) != NULL);
-        gOriginalIsHiddenIMP = NULL;
-    }
-
-    if (gOriginalSetHiddenIMP) {
-        success &= (WCReplaceMethod(nsApplicationClass, @selector(setHidden:), gOriginalSetHiddenIMP) != NULL);
-        gOriginalSetHiddenIMP = NULL;
-    }
-
-    if (gOriginalIsActiveIMP) {
-        success &= (WCReplaceMethod(nsApplicationClass, @selector(isActive), gOriginalIsActiveIMP) != NULL);
-        gOriginalIsActiveIMP = NULL;
-    }
-
-    if (gOriginalActivateIgnoringOtherAppsIMP) {
-        success &= (WCReplaceMethod(nsApplicationClass, @selector(activateIgnoringOtherApps:), gOriginalActivateIgnoringOtherAppsIMP) != NULL);
-        gOriginalActivateIgnoringOtherAppsIMP = NULL;
-    }
-
-    if (gOriginalOrderFrontStandardAboutPanelIMP) {
-        success &= (WCReplaceMethod(nsApplicationClass, @selector(orderFrontStandardAboutPanel:), gOriginalOrderFrontStandardAboutPanelIMP) != NULL);
-        gOriginalOrderFrontStandardAboutPanelIMP = NULL;
-    }
-
-    if (gOriginalHideIMP) {
-        success &= (WCReplaceMethod(nsApplicationClass, @selector(hide:), gOriginalHideIMP) != NULL);
-        gOriginalHideIMP = NULL;
-    }
-
-    if (gOriginalUnhideIMP) {
-        success &= (WCReplaceMethod(nsApplicationClass, @selector(unhide:), gOriginalUnhideIMP) != NULL);
-        gOriginalUnhideIMP = NULL;
-    }
-
-    if (gOriginalBecomeActiveApplicationIMP) {
-        success &= (WCReplaceMethod(nsApplicationClass, @selector(becomeActiveApplication), gOriginalBecomeActiveApplicationIMP) != NULL);
-        gOriginalBecomeActiveApplicationIMP = NULL;
-    }
-
-    if (success) {
-        WCLogInfo(@"NSApplication interceptor uninstalled successfully");
-        gInstalled = NO;
-    } else {
-        WCLogError(@"Failed to uninstall NSApplication interceptor");
-    }
-
-    return success;
-}
-
-@end
