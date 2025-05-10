@@ -6,7 +6,8 @@ A macOS utility that uses dylib injection to modify the behavior and appearance 
 
 - **Screen Recording Protection**: Make application windows invisible to screen recording tools
 - **Dock Icon Hiding**: Hide applications from the macOS Dock
-- **Status Bar Hiding**: Hide menu bar when the application has focus
+- **Always-on-Top Windows**: Keep windows above regular application windows
+- **System UI Compatibility**: Properly interact with Mission Control and other system UI elements
 
 ## Usage
 
@@ -31,7 +32,7 @@ Options:
 
 ## How It Works
 
-WindowControlInjector applies multiple protection mechanisms automatically:
+WindowControlInjector applies multiple mechanisms automatically:
 
 1. **Screen Recording Protection**
    - Sets window sharing type to `NSWindowSharingNone`
@@ -41,21 +42,28 @@ WindowControlInjector applies multiple protection mechanisms automatically:
    - Sets activation policy to `NSApplicationActivationPolicyAccessory`
    - Prevents the application icon from appearing in the Dock
 
-3. **Menu Bar Hiding**
-   - Applies `NSApplicationPresentationHideMenuBar` presentation options
-   - Hides the menu bar when the application has focus
+3. **Always-on-Top Windows**
+   - Sets window level to `NSFloatingWindowLevel`
+   - Keeps windows above regular application windows
+
+4. **System UI Integration**
+   - Sets proper window collection behavior flags for Mission Control integration
+   - Uses `NSWindowCollectionBehaviorParticipatesInCycle` to show windows in Mission Control
+   - Uses `NSWindowStyleMaskNonactivatingPanel` to prevent focus stealing
 
 All protections are applied automatically with a single command - no configuration required.
 
 ### System-Level Limitations
 
-While WindowControlInjector can effectively hide an application from screenshots, the Dock, and the status bar, there are some visual cues that are unavoidable at the macOS system level:
+While WindowControlInjector provides powerful control over application windows, there are some system-level behaviors that are inherent to macOS:
 
-- **Window focus indicators**: When a protected application has keyboard focus, other applications' title bars will still change to an inactive color state. This happens because macOS needs to track which application has input focus for keyboard events, and it signals this change to all applications.
+- **Window focus behavior**: Windows use special styling (`NSWindowStyleMaskNonactivatingPanel`) to prevent stealing focus, but this may make them behave differently than standard application windows.
 
-- **Menu bar changes**: The system menu bar may still show subtle changes when a protected application has focus, though the application's menu items will be hidden.
+- **System UI interaction**: Although windows appear in Mission Control and interact properly with most system UI elements, some system-level operations may behave differently with modified windows.
 
-These limitations exist because they are fundamental to how macOS manages application focus and cannot be completely overridden without modifying core system components.
+- **Compatibility variations**: Some applications may respond differently to these modifications based on how they're built and which macOS frameworks they use.
+
+These limitations exist because we're modifying application behavior at runtime rather than changing the applications themselves. The injector strikes a careful balance between functionality and system integration.
 
 ## Building from Source
 

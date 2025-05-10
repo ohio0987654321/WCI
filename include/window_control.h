@@ -16,7 +16,6 @@
 // Import the core components
 #import "../src/core/protector.h"
 #import "../src/util/logger.h"
-#import "profiles.h"
 #import "injector.h"
 
 /**

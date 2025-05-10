@@ -345,44 +345,6 @@ NSString *const WCProtectorErrorDomain = @"com.windowcontrolinjector.protector";
 }
 
 /**
- * Apply specific profiles to the application
- */
-+ (BOOL)protectApplicationWithProfiles:(NSString *)applicationPath
-                           withProfiles:(NSArray<NSString *> *)profiles
-                                 error:(NSError **)error {
-    // Add direct console output for diagnostics
-    printf("[WindowControlInjector] Starting application protection with profiles\n");
-
-    if (!applicationPath) {
-        printf("[WindowControlInjector] ERROR: Application path is nil\n");
-        if (error) {
-            *error = [NSError errorWithDomain:WCProtectorErrorDomain
-                                         code:100
-                                     userInfo:@{NSLocalizedDescriptionKey: @"Application path is nil"}];
-        }
-        return NO;
-    }
-
-    if (!profiles || profiles.count == 0) {
-        printf("[WindowControlInjector] WARNING: No profiles specified, using default protection\n");
-        return [self protectApplication:applicationPath error:error];
-    }
-
-    printf("[WindowControlInjector] Protecting application with %lu profiles: %s\n",
-           (unsigned long)profiles.count, [[profiles componentsJoinedByString:@", "] UTF8String]);
-    WCLogInfo(@"Applying protection to application with profiles: %@", [profiles componentsJoinedByString:@", "]);
-
-    // Store the profiles in the environment so they can be accessed by the injected dylib
-    NSMutableDictionary *env = [NSMutableDictionary dictionaryWithDictionary:[[NSProcessInfo processInfo] environment]];
-    NSString *profilesStr = [profiles componentsJoinedByString:@","];
-    env[@"WC_PROFILES"] = profilesStr;
-
-    // Call the standard protection method which will handle the launch
-    // The injected dylib will read the WC_PROFILES environment variable
-    return [self protectApplication:applicationPath error:error];
-}
-
-/**
  * Apply specific property overrides to the application
  */
 + (BOOL)protectApplicationWithProperties:(NSString *)applicationPath
@@ -438,10 +400,6 @@ NSString *const WCProtectorErrorDomain = @"com.windowcontrolinjector.protector";
 // C function wrappers for the public API
 BOOL WCProtectApplication(NSString *applicationPath, NSError **error) {
     return [WCProtector protectApplication:applicationPath error:error];
-}
-
-BOOL WCProtectApplicationWithProfiles(NSString *applicationPath, NSArray<NSString *> *profiles, NSError **error) {
-    return [WCProtector protectApplicationWithProfiles:applicationPath withProfiles:profiles error:error];
 }
 
 BOOL WCProtectApplicationWithProperties(NSString *applicationPath, NSDictionary *properties, NSError **error) {

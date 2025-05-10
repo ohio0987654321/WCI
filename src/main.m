@@ -83,23 +83,10 @@ int main(int argc, const char * argv[]) {
         }
         printf("[WindowControlInjector] Successfully initialized WindowControlInjector\n");
 
-        // Create profiles array with all features enabled by default
-        NSMutableArray *profiles = [NSMutableArray arrayWithObjects:
-                                    @"invisible",
-                                    @"stealth",
-                                    @"unfocusable",
-                                    @"click-through",
-                                    nil];
-
-        printf("[WindowControlInjector] Adding invisible profile\n");
-        printf("[WindowControlInjector] Adding stealth profile\n");
-        printf("[WindowControlInjector] Adding unfocusable profile\n");
-        printf("[WindowControlInjector] Adding click-through profile\n");
-
-        // Apply protection
+        // Apply protection with all features enabled by default
         printf("[WindowControlInjector] Applying protection to application...\n");
         NSError *error = nil;
-        BOOL success = WCProtectApplicationWithProfiles(applicationPath, profiles, &error);
+        BOOL success = WCProtectApplication(applicationPath, &error);
 
         if (!success) {
             if (error) {

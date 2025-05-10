@@ -29,20 +29,6 @@ extern NSString *const WCProtectorErrorDomain;
 + (BOOL)protectApplication:(NSString *)applicationPath error:(NSError **)error;
 
 /**
- * @brief Apply specific profiles to the specified application
- *
- * This method applies only the specified profiles to the application.
- *
- * @param applicationPath The path to the application to protect
- * @param profiles An array of profile names to apply
- * @param error On input, a pointer to an error object. If an error occurs, this pointer is set to an actual error object containing the error information.
- * @return YES if successful, NO otherwise
- */
-+ (BOOL)protectApplicationWithProfiles:(NSString *)applicationPath
-                           withProfiles:(NSArray<NSString *> *)profiles
-                                 error:(NSError **)error;
-
-/**
  * @brief Apply specific property overrides to the specified application
  *
  * This method applies the specified property overrides to the application.
@@ -74,7 +60,6 @@ extern NSString *const WCProtectorErrorDomain;
 
 // C function wrappers for the public API
 BOOL WCProtectApplication(NSString *applicationPath, NSError **error);
-BOOL WCProtectApplicationWithProfiles(NSString *applicationPath, NSArray<NSString *> *profiles, NSError **error);
 BOOL WCProtectApplicationWithProperties(NSString *applicationPath, NSDictionary *properties, NSError **error);
 BOOL WCInitialize(void);
 

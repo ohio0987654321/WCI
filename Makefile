@@ -14,7 +14,6 @@ LIB_DIR = $(BUILD_DIR)/lib
 BIN_DIR = $(BUILD_DIR)
 OBJ_DIR = $(BUILD_DIR)/obj
 INCLUDE_DIR = include
-PROFILES_DIR = profiles
 
 # Source files
 CORE_SRC = $(wildcard $(SRC_DIR)/core/*.m)
