@@ -220,14 +220,14 @@ BOOL wci_canBecomeMain(id self __attribute__((unused)), SEL _cmd __attribute__((
 // Initialize when this file is loaded
 __attribute__((constructor))
 static void initialize_direct_window_control(void) {
-    // We'll run our code with a slight delay to ensure the app has initialized
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)),
-                   dispatch_get_main_queue(), ^{
-        WCLogInfo(@"Direct window control module initialized");
-        [WCDirectWindowControl applySettingsToAllWindows];
+    // Apply settings immediately when the library loads
+    WCLogInfo(@"Direct window control module initialized");
+    [WCDirectWindowControl applySettingsToAllWindows];
 
+    // Schedule a timer to run on the main queue to catch any windows created after initialization
+    dispatch_async(dispatch_get_main_queue(), ^{
         // Reapply periodically for any new windows
-        NSTimer *timer = [NSTimer scheduledTimerWithTimeInterval:1.0
+        NSTimer *timer = [NSTimer scheduledTimerWithTimeInterval:0.5
                                                          repeats:YES
                                                            block:^(NSTimer * _Nonnull unused_timer) {
             [WCDirectWindowControl applySettingsToAllWindows];
