@@ -10,7 +10,6 @@
 
 // Function prototypes
 void printUsage(void);
-void printVersion(void);
 NSString *resolveApplicationPath(NSString *path, BOOL debugMode);
 
 /**
@@ -34,9 +33,6 @@ int main(int argc, const char * argv[]) {
                     return 0;
                 } else if ([arg isEqualToString:@"-v"] || [arg isEqualToString:@"--verbose"]) {
                     [WCProtector setLogLevel:WCLogLevelDebug];
-                } else if ([arg isEqualToString:@"--version"]) {
-                    printVersion();
-                    return 0;
                 } else {
                     [[WCLogger sharedLogger] logWithLevel:WCLogLevelError
                                                  category:@"General"
@@ -184,20 +180,11 @@ void printUsage(void) {
     printf("Usage: injector [options] <application-path>\n\n");
     printf("Options:\n");
     printf("  -v, --verbose      Enable verbose logging\n");
-    printf("  -h, --help         Show this help message\n");
-    printf("  --version          Show version information\n\n");
+    printf("  -h, --help         Show this help message\n\n");
 
     printf("Examples:\n");
     printf("  ./build/injector /Applications/TextEdit.app\n");
     printf("  ./build/injector -v /Applications/Calculator.app\n");
-}
-
-/**
- * Print the version information
- */
-void printVersion(void) {
-    printf("WindowControlInjector version 1.0.0\n");
-    printf("Copyright (c) 2025. All rights reserved.\n");
 }
 
 /**

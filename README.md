@@ -17,7 +17,6 @@ Usage: injector [options] <application-path>
 Options:
   -v, --verbose      Enable verbose logging
   -h, --help         Show this help message
-  --version          Show version information
 ```
 
 ### Examples
@@ -55,17 +54,30 @@ All protections are applied automatically with a single command - no configurati
 
 ## Refactoring Project
 
-The codebase is currently undergoing refactoring to improve maintainability and architecture. The refactoring focuses on:
+The codebase is currently undergoing refactoring to improve maintainability and architecture. The following improvements have been implemented:
+
+✅ **Enhanced Logging System** - Implemented a robust logging system with:
+   - Categorized logging for better filtering
+   - Support for multiple logging handlers
+   - Direct formatting with source file and line information
+   - Improved error reporting
+
+The following refactoring tasks are still in progress:
 
 1. Improving code organization
 2. Reducing global state
 3. Enhancing error handling
 4. Modernizing method swizzling
 5. Centralizing configuration
-6. Improving logging
-7. Better path resolution
+6. Better path resolution
 
-See [refactoring.md](refactoring.md) for a detailed breakdown of the planned improvements.
+See [refactoring.md](refactoring.md) for a detailed breakdown of all planned improvements.
+
+## Recent Fixes
+
+- **Fixed Segmentation Fault** - Resolved critical crash caused by infinite recursion in the logging compatibility layer
+- **Improved Error Handling** - Enhanced error reporting for application launch issues
+- **Removed Legacy Code** - Cleaned up obsolete code paths and backup files
 
 ## System-Level Limitations
 
