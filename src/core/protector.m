@@ -7,9 +7,9 @@
 #import "../util/logger.h"
 #import "../interceptors/nswindow_interceptor.h"
 #import "../interceptors/nsapplication_interceptor.h"
-#import "direct_window_control.h"
 #import <dlfcn.h>
 #import <mach-o/dyld.h>
+#import <AppKit/AppKit.h>
 
 // Error domain
 NSString *const WCProtectorErrorDomain = @"com.windowcontrolinjector.protector";
@@ -98,6 +98,39 @@ NSString *const WCProtectorErrorDomain = @"com.windowcontrolinjector.protector";
 }
 
 /**
+ * Process existing windows when initializing
+ */
++ (void)processExistingWindows {
+    // Apply settings to any existing windows
+    NSApplication *app = [NSApplication sharedApplication];
+
+    WCLogInfo(@"Processing existing windows in the application");
+
+    // Process all windows
+    for (NSWindow *window in [app windows]) {
+        WCLogInfo(@"Found existing window: %@", window);
+        // Window settings are controlled by the interceptors
+    }
+
+    // Set up a notification observer for new windows
+    [[NSNotificationCenter defaultCenter] addObserver:[self class]
+                                             selector:@selector(windowDidBecomeVisible:)
+                                                 name:NSWindowDidExposeNotification
+                                               object:nil];
+}
+
+/**
+ * Handle window visibility notifications
+ */
++ (void)windowDidBecomeVisible:(NSNotification *)notification {
+    NSWindow *window = notification.object;
+    if ([window isKindOfClass:[NSWindow class]]) {
+        WCLogInfo(@"New window became visible: %@", window);
+        // Window settings are controlled by the interceptors
+    }
+}
+
+/**
  * Initialize the WindowControlInjector
  */
 + (BOOL)initialize {
@@ -107,9 +140,9 @@ NSString *const WCProtectorErrorDomain = @"com.windowcontrolinjector.protector";
     BOOL success = [WCNSWindowInterceptor install];
     success &= [WCNSApplicationInterceptor install];
 
-    // Initialize direct window control if we're running inside an injected application
+    // Process existing windows if we're running inside an injected application
     // This won't do anything when running as the injector
-    [WCDirectWindowControl applySettingsToAllWindows];
+    [self processExistingWindows];
 
     WCLogInfo(@"WindowControlInjector initialized %@", success ? @"successfully" : @"with errors");
 
