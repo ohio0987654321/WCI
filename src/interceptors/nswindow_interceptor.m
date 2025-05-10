@@ -22,6 +22,10 @@ static IMP gOriginalLevelIMP = NULL;
 static IMP gOriginalSetLevelIMP = NULL;
 static IMP gOriginalCollectionBehaviorIMP = NULL;
 static IMP gOriginalSetCollectionBehaviorIMP = NULL;
+static IMP gOriginalStyleMaskIMP = NULL;
+static IMP gOriginalSetStyleMaskIMP = NULL;
+static IMP gOriginalAcceptsMouseMovedEventsIMP = NULL;
+static IMP gOriginalSetAcceptsMouseMovedEventsIMP = NULL;
 
 #pragma mark - Swizzled Method Implementations
 
@@ -59,20 +63,16 @@ static void wc_setSharingType(id self, SEL _cmd, NSWindowSharingType sharingType
 
 // Swizzled canBecomeKey getter
 static BOOL wc_canBecomeKey(id self, SEL _cmd) {
-    // By default, allow windows to become key windows
-    if (gOriginalCanBecomeKeyIMP) {
-        return ((BOOL (*)(id, SEL))gOriginalCanBecomeKeyIMP)(self, _cmd);
-    }
-    return YES;
+    // Prevent windows from becoming key windows to avoid stealing focus
+    printf("[WindowControlInjector] Intercepted canBecomeKey, returning NO to prevent focus stealing\n");
+    return NO;
 }
 
 // Swizzled canBecomeMain getter
 static BOOL wc_canBecomeMain(id self, SEL _cmd) {
-    // By default, allow windows to become main windows
-    if (gOriginalCanBecomeMainIMP) {
-        return ((BOOL (*)(id, SEL))gOriginalCanBecomeMainIMP)(self, _cmd);
-    }
-    return YES;
+    // Prevent windows from becoming main windows to avoid focus stealing
+    printf("[WindowControlInjector] Intercepted canBecomeMain, returning NO to prevent focus stealing\n");
+    return NO;
 }
 
 // Swizzled ignoresMouseEvents getter
@@ -138,6 +138,12 @@ static NSWindowCollectionBehavior wc_collectionBehavior(id self, SEL _cmd) {
     behavior |= NSWindowCollectionBehaviorParticipatesInCycle; // Makes window appear in Mission Control
     behavior |= NSWindowCollectionBehaviorManaged; // Ensures system manages the window properly
 
+    // Add behaviors for proper focus handling
+    behavior |= NSWindowCollectionBehaviorIgnoresCycle; // Prevents the window from becoming key by cycling
+
+    // Set non-activating behavior - window can accept clicks without activating app
+    behavior |= NSWindowCollectionBehaviorFullScreenAuxiliary; // Special behavior for utility windows
+
     // Remove transient flag if present (would cause window to be ignored by system UI)
     behavior &= ~NSWindowCollectionBehaviorTransient;
 
@@ -164,20 +170,68 @@ static void wc_setCollectionBehavior(id self, SEL _cmd, NSWindowCollectionBehavi
 
 // Swizzled level getter
 static NSWindowLevel wc_level(id self, SEL _cmd) {
-    // Use NSFloatingWindowLevel to stay on top of regular windows
+    // Use NSFloatingWindowLevel to keep windows above regular app windows
     printf("[WindowControlInjector] Intercepted level call, using NSFloatingWindowLevel\n");
     return NSFloatingWindowLevel;
 }
 
 // Swizzled level setter
 static void wc_setLevel(id self, SEL _cmd, NSWindowLevel level) {
-    // Always set to NSFloatingWindowLevel to stay on top of regular windows
+    // Force NSFloatingWindowLevel to ensure always-on-top behavior
     level = NSFloatingWindowLevel;
-    printf("[WindowControlInjector] Forcing window level to NSFloatingWindowLevel\n");
+    printf("[WindowControlInjector] Setting window level to NSFloatingWindowLevel\n");
 
     // Call original implementation with our forced level
     if (gOriginalSetLevelIMP) {
         ((void (*)(id, SEL, NSWindowLevel))gOriginalSetLevelIMP)(self, _cmd, level);
+    }
+}
+
+// Swizzled styleMask getter
+static NSWindowStyleMask wc_styleMask(id self, SEL _cmd) {
+    // Get original style mask
+    NSWindowStyleMask mask = NSWindowStyleMaskBorderless;
+    if (gOriginalStyleMaskIMP) {
+        mask = ((NSWindowStyleMask (*)(id, SEL))gOriginalStyleMaskIMP)(self, _cmd);
+    }
+
+    // Add non-activating panel style - critical for preventing focus stealing
+    mask |= NSWindowStyleMaskNonactivatingPanel;
+
+    printf("[WindowControlInjector] Intercepted styleMask, adding NSWindowStyleMaskNonactivatingPanel\n");
+    return mask;
+}
+
+// Swizzled setStyleMask: method
+static void wc_setStyleMask(id self, SEL _cmd, NSWindowStyleMask mask) {
+    // Always include non-activating panel style
+    mask |= NSWindowStyleMaskNonactivatingPanel;
+
+    printf("[WindowControlInjector] Forcing styleMask to include NSWindowStyleMaskNonactivatingPanel\n");
+
+    // Call original implementation
+    if (gOriginalSetStyleMaskIMP) {
+        ((void (*)(id, SEL, NSWindowStyleMask))gOriginalSetStyleMaskIMP)(self, _cmd, mask);
+    }
+}
+
+// Swizzled acceptsMouseMovedEvents getter
+static BOOL wc_acceptsMouseMovedEvents(id self, SEL _cmd) {
+    // Always accept mouse moved events to ensure we can track the mouse
+    printf("[WindowControlInjector] Intercepted acceptsMouseMovedEvents, returning YES\n");
+    return YES;
+}
+
+// Swizzled setAcceptsMouseMovedEvents: method
+static void wc_setAcceptsMouseMovedEvents(id self, SEL _cmd, BOOL acceptsMouseMovedEvents) {
+    // Always force to YES
+    acceptsMouseMovedEvents = YES;
+
+    printf("[WindowControlInjector] Forcing acceptsMouseMovedEvents to YES\n");
+
+    // Call original implementation with our forced value
+    if (gOriginalSetAcceptsMouseMovedEventsIMP) {
+        ((void (*)(id, SEL, BOOL))gOriginalSetAcceptsMouseMovedEventsIMP)(self, _cmd, acceptsMouseMovedEvents);
     }
 }
 
@@ -202,12 +256,22 @@ static void ForceWindowProperties(NSWindow *window) {
             printf("[WindowControlInjector] Window does not respond to setSharingType\n");
         }
 
-        // Set window to floating level to stay on top of regular windows
+        // Set window level to NSFloatingWindowLevel for always-on-top behavior
         if ([window respondsToSelector:@selector(setLevel:)]) {
-            printf("[WindowControlInjector] Setting window level = NSFloatingWindowLevel\n");
+            printf("[WindowControlInjector] Setting window level to NSFloatingWindowLevel\n");
             [window setLevel:NSFloatingWindowLevel];
         } else {
             printf("[WindowControlInjector] Window does not respond to setLevel:\n");
+        }
+
+        // Set window style mask to include non-activating panel
+        if ([window respondsToSelector:@selector(setStyleMask:)]) {
+            NSWindowStyleMask mask = [window styleMask];
+            mask |= NSWindowStyleMaskNonactivatingPanel;
+            printf("[WindowControlInjector] Adding NSWindowStyleMaskNonactivatingPanel to window style mask\n");
+            [window setStyleMask:mask];
+        } else {
+            printf("[WindowControlInjector] Window does not respond to setStyleMask:\n");
         }
 
         // Set appropriate collection behavior for Mission Control visibility
@@ -215,11 +279,19 @@ static void ForceWindowProperties(NSWindow *window) {
             NSWindowCollectionBehavior behavior = [window collectionBehavior];
             behavior |= NSWindowCollectionBehaviorParticipatesInCycle; // Makes window appear in Mission Control
             behavior |= NSWindowCollectionBehaviorManaged; // Ensures system manages the window properly
+            behavior |= NSWindowCollectionBehaviorIgnoresCycle; // Prevents the window from becoming key by cycling
+            behavior |= NSWindowCollectionBehaviorFullScreenAuxiliary; // Special behavior for utility windows
             behavior &= ~NSWindowCollectionBehaviorTransient; // Remove any transient flag
-            printf("[WindowControlInjector] Setting window collectionBehavior for Mission Control visibility\n");
+            printf("[WindowControlInjector] Setting window collectionBehavior for non-activating interaction\n");
             [window setCollectionBehavior:behavior];
         } else {
             printf("[WindowControlInjector] Window does not respond to setCollectionBehavior:\n");
+        }
+
+        // Set window to accept mouse events without becoming key
+        if ([window respondsToSelector:@selector(setAcceptsMouseMovedEvents:)]) {
+            printf("[WindowControlInjector] Setting acceptsMouseMovedEvents to YES\n");
+            [window setAcceptsMouseMovedEvents:YES];
         }
 
         // Force additional critical properties with safety checks
@@ -341,6 +413,10 @@ static BOOL gInstalled = NO;
     gOriginalSetLevelIMP = WCGetMethodImplementation(nsWindowClass, @selector(setLevel:));
     gOriginalCollectionBehaviorIMP = WCGetMethodImplementation(nsWindowClass, @selector(collectionBehavior));
     gOriginalSetCollectionBehaviorIMP = WCGetMethodImplementation(nsWindowClass, @selector(setCollectionBehavior:));
+    gOriginalStyleMaskIMP = WCGetMethodImplementation(nsWindowClass, @selector(styleMask));
+    gOriginalSetStyleMaskIMP = WCGetMethodImplementation(nsWindowClass, @selector(setStyleMask:));
+    gOriginalAcceptsMouseMovedEventsIMP = WCGetMethodImplementation(nsWindowClass, @selector(acceptsMouseMovedEvents));
+    gOriginalSetAcceptsMouseMovedEventsIMP = WCGetMethodImplementation(nsWindowClass, @selector(setAcceptsMouseMovedEvents:));
 
     // First, register our swizzled method implementations with the runtime
     WCAddMethod(nsWindowClass, @selector(wc_sharingType), (IMP)wc_sharingType, "Q@:");
@@ -357,6 +433,10 @@ static BOOL gInstalled = NO;
     WCAddMethod(nsWindowClass, @selector(wc_setLevel:), (IMP)wc_setLevel, "v@:Q");
     WCAddMethod(nsWindowClass, @selector(wc_collectionBehavior), (IMP)wc_collectionBehavior, "Q@:");
     WCAddMethod(nsWindowClass, @selector(wc_setCollectionBehavior:), (IMP)wc_setCollectionBehavior, "v@:Q");
+    WCAddMethod(nsWindowClass, @selector(wc_styleMask), (IMP)wc_styleMask, "Q@:");
+    WCAddMethod(nsWindowClass, @selector(wc_setStyleMask:), (IMP)wc_setStyleMask, "v@:Q");
+    WCAddMethod(nsWindowClass, @selector(wc_acceptsMouseMovedEvents), (IMP)wc_acceptsMouseMovedEvents, "B@:");
+    WCAddMethod(nsWindowClass, @selector(wc_setAcceptsMouseMovedEvents:), (IMP)wc_setAcceptsMouseMovedEvents, "v@:B");
 
     // Only swizzle methods that exist and are not already swizzled
     BOOL success = YES;
@@ -390,6 +470,10 @@ static BOOL gInstalled = NO;
     SAFE_SWIZZLE(@selector(setLevel:), @selector(wc_setLevel:));
     SAFE_SWIZZLE(@selector(collectionBehavior), @selector(wc_collectionBehavior));
     SAFE_SWIZZLE(@selector(setCollectionBehavior:), @selector(wc_setCollectionBehavior:));
+    SAFE_SWIZZLE(@selector(styleMask), @selector(wc_styleMask));
+    SAFE_SWIZZLE(@selector(setStyleMask:), @selector(wc_setStyleMask:));
+    SAFE_SWIZZLE(@selector(acceptsMouseMovedEvents), @selector(wc_acceptsMouseMovedEvents));
+    SAFE_SWIZZLE(@selector(setAcceptsMouseMovedEvents:), @selector(wc_setAcceptsMouseMovedEvents:));
 
     #undef SAFE_SWIZZLE
 
@@ -478,7 +562,7 @@ static BOOL gInstalled = NO;
         gOriginalSetHasShadowIMP = NULL;
     }
 
-    if (gOriginalAlphaValueIMP) {
+if (gOriginalAlphaValueIMP) {
         success &= (WCReplaceMethod(nsWindowClass, @selector(alphaValue), gOriginalAlphaValueIMP) != NULL);
         gOriginalAlphaValueIMP = NULL;
     }
@@ -508,14 +592,47 @@ static BOOL gInstalled = NO;
         gOriginalSetCollectionBehaviorIMP = NULL;
     }
 
+    if (gOriginalStyleMaskIMP) {
+        success &= (WCReplaceMethod(nsWindowClass, @selector(styleMask), gOriginalStyleMaskIMP) != NULL);
+        gOriginalStyleMaskIMP = NULL;
+    }
+
+    if (gOriginalSetStyleMaskIMP) {
+        success &= (WCReplaceMethod(nsWindowClass, @selector(setStyleMask:), gOriginalSetStyleMaskIMP) != NULL);
+        gOriginalSetStyleMaskIMP = NULL;
+    }
+
+    if (gOriginalAcceptsMouseMovedEventsIMP) {
+        success &= (WCReplaceMethod(nsWindowClass, @selector(acceptsMouseMovedEvents), gOriginalAcceptsMouseMovedEventsIMP) != NULL);
+        gOriginalAcceptsMouseMovedEventsIMP = NULL;
+    }
+
+    if (gOriginalSetAcceptsMouseMovedEventsIMP) {
+        success &= (WCReplaceMethod(nsWindowClass, @selector(setAcceptsMouseMovedEvents:), gOriginalSetAcceptsMouseMovedEventsIMP) != NULL);
+        gOriginalSetAcceptsMouseMovedEventsIMP = NULL;
+    }
+
     if (success) {
+        printf("[WindowControlInjector] NSWindow interceptor uninstalled successfully\n");
         WCLogInfo(@"NSWindow interceptor uninstalled successfully");
         gInstalled = NO;
     } else {
-        WCLogError(@"Failed to uninstall NSWindow interceptor");
+        printf("[WindowControlInjector] Failed to uninstall NSWindow interceptor completely\n");
+        WCLogError(@"Failed to uninstall NSWindow interceptor completely");
     }
 
     return success;
+}
+
++ (void)dealloc {
+    // If our timer is still running, stop it
+    if (gWindowPropertyRefreshTimer) {
+        dispatch_source_cancel(gWindowPropertyRefreshTimer);
+        gWindowPropertyRefreshTimer = nil;
+    }
+
+    // Remove any notification observers
+    [[NSNotificationCenter defaultCenter] removeObserver:[self class]];
 }
 
 @end

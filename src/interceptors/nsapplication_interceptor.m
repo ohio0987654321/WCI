@@ -21,12 +21,13 @@ static IMP gOriginalActivateIgnoringOtherAppsIMP = NULL;
 static IMP gOriginalOrderFrontStandardAboutPanelIMP = NULL;
 static IMP gOriginalHideIMP = NULL;
 static IMP gOriginalUnhideIMP = NULL;
+static IMP gOriginalBecomeActiveApplicationIMP = NULL;
 
 #pragma mark - Swizzled Method Implementations
 
 // Swizzled activationPolicy getter
 static NSApplicationActivationPolicy wc_activationPolicy(id self, SEL _cmd) {
-    // Override: Use accessory policy to hide from Dock
+    // Override: Use accessory policy to hide from Dock while still allowing init
     printf("[WindowControlInjector] Intercepted activationPolicy call, forcing NSApplicationActivationPolicyAccessory\n");
     return NSApplicationActivationPolicyAccessory;
 }
@@ -47,21 +48,23 @@ static BOOL wc_setActivationPolicy(id self, SEL _cmd, NSApplicationActivationPol
 
 // Swizzled presentationOptions getter
 static NSApplicationPresentationOptions wc_presentationOptions(id self, SEL _cmd) {
-    // Use minimal presentation options - just hide dock
-    NSApplicationPresentationOptions options = NSApplicationPresentationHideDock;
+    // Use presentation options for hide dock and more balanced behavior
+    NSApplicationPresentationOptions options = NSApplicationPresentationHideDock |
+                                               NSApplicationPresentationDisableForceQuit;
 
-    printf("[WindowControlInjector] Modified presentation options: %lu (just hiding dock)\n", (unsigned long)options);
+    printf("[WindowControlInjector] Modified presentation options: %lu (hide dock + disable force quit)\n", (unsigned long)options);
     return options;
 }
 
 // Swizzled setPresentationOptions: setter
 static void wc_setPresentationOptions(id self, SEL _cmd, NSApplicationPresentationOptions presentationOptions) {
-    // Only enforce hiding dock - minimal intervention
-    NSApplicationPresentationOptions enforcedOptions = NSApplicationPresentationHideDock;
+    // Enforce hide dock and disable force quit for better stability
+    NSApplicationPresentationOptions enforcedOptions = NSApplicationPresentationHideDock |
+                                                       NSApplicationPresentationDisableForceQuit;
 
-    printf("[WindowControlInjector] Forcing minimal presentation options: %lu\n", (unsigned long)enforcedOptions);
+    printf("[WindowControlInjector] Forcing presentation options: %lu\n", (unsigned long)enforcedOptions);
 
-    // Call original implementation with our simplified options
+    // Call original implementation with our options
     if (gOriginalSetPresentationOptionsIMP) {
         ((void (*)(id, SEL, NSApplicationPresentationOptions))gOriginalSetPresentationOptionsIMP)(self, _cmd, enforcedOptions);
     }
@@ -86,19 +89,19 @@ static void wc_setHidden(id self, SEL _cmd, BOOL hidden) {
 
 // Swizzled isActive getter
 static BOOL wc_isActive(id self, SEL _cmd) {
-    // Call original implementation
-    if (gOriginalIsActiveIMP) {
-        return ((BOOL (*)(id, SEL))gOriginalIsActiveIMP)(self, _cmd);
-    }
-    return NO;
+    // Always report as active so the app thinks it's running normally
+    // but don't actually make it active at the system level
+    printf("[WindowControlInjector] Intercepted isActive, returning YES without stealing focus\n");
+    return YES;
 }
 
 // Swizzled activateIgnoringOtherApps: method
 static void wc_activateIgnoringOtherApps(id self, SEL _cmd, BOOL flag) {
-    // Call original implementation - we still want to be able to activate
-    if (gOriginalActivateIgnoringOtherAppsIMP) {
-        ((void (*)(id, SEL, BOOL))gOriginalActivateIgnoringOtherAppsIMP)(self, _cmd, flag);
-    }
+    // Don't activate the app - this prevents stealing focus
+    printf("[WindowControlInjector] Blocked activateIgnoringOtherApps: to prevent focus stealing\n");
+
+    // Don't call original implementation to avoid activation
+    // This prevents our app from stealing focus from text editors or other apps
 }
 
 // Swizzled orderFrontStandardAboutPanel: method
@@ -125,6 +128,15 @@ static void wc_unhide(id self, SEL _cmd, id sender) {
     }
 }
 
+// Additional override for becomeActiveApplication
+static void wc_becomeActiveApplication(id self, SEL _cmd) {
+    // Block becoming the active application to avoid stealing focus
+    printf("[WindowControlInjector] Blocked becomeActiveApplication to prevent focus stealing\n");
+
+    // Don't call the original implementation as this would make our app active
+    // We want to avoid stealing focus from text editors or other apps
+}
+
 // Track when the app is fully loaded
 static BOOL gAppFullyLoaded = NO;
 static os_unfair_lock gAppSettingsLock = OS_UNFAIR_LOCK_INIT;
@@ -148,7 +160,7 @@ static void ForceApplicationSettings(NSApplication *app) {
 
     printf("[WindowControlInjector] Applying application settings for NSApp\n");
 
-    // Force activation policy - this is the core stealth feature
+    // Force activation policy - use accessory to allow proper initialization
     if ([app respondsToSelector:@selector(setActivationPolicy:)]) {
         printf("[WindowControlInjector] Setting activationPolicy = NSApplicationActivationPolicyAccessory\n");
         BOOL result = [app setActivationPolicy:NSApplicationActivationPolicyAccessory];
@@ -157,12 +169,13 @@ static void ForceApplicationSettings(NSApplication *app) {
         printf("[WindowControlInjector] NSApp does not respond to setActivationPolicy\n");
     }
 
-    // Apply minimal presentation options - just hide dock
+    // Apply presentation options - with more balanced approach
     if ([app respondsToSelector:@selector(setPresentationOptions:)]) {
-        // Minimal options for hiding:
-        NSApplicationPresentationOptions options = NSApplicationPresentationHideDock;
+        // Less aggressive options for better stability:
+        NSApplicationPresentationOptions options = NSApplicationPresentationHideDock |
+                                                   NSApplicationPresentationDisableForceQuit;
 
-        printf("[WindowControlInjector] Setting minimal presentation options: %lu\n", (unsigned long)options);
+        printf("[WindowControlInjector] Setting presentation options: %lu\n", (unsigned long)options);
         [app setPresentationOptions:options];
     }
 
@@ -265,6 +278,7 @@ static BOOL gInstalled = NO;
     gOriginalOrderFrontStandardAboutPanelIMP = WCGetMethodImplementation(nsApplicationClass, @selector(orderFrontStandardAboutPanel:));
     gOriginalHideIMP = WCGetMethodImplementation(nsApplicationClass, @selector(hide:));
     gOriginalUnhideIMP = WCGetMethodImplementation(nsApplicationClass, @selector(unhide:));
+    gOriginalBecomeActiveApplicationIMP = WCGetMethodImplementation(nsApplicationClass, @selector(becomeActiveApplication));
 
     // First, register our swizzled method implementations with the runtime
     WCAddMethod(nsApplicationClass, @selector(wc_activationPolicy), (IMP)wc_activationPolicy, "i@:");
@@ -278,6 +292,7 @@ static BOOL gInstalled = NO;
     WCAddMethod(nsApplicationClass, @selector(wc_orderFrontStandardAboutPanel:), (IMP)wc_orderFrontStandardAboutPanel, "v@:@");
     WCAddMethod(nsApplicationClass, @selector(wc_hide:), (IMP)wc_hide, "v@:@");
     WCAddMethod(nsApplicationClass, @selector(wc_unhide:), (IMP)wc_unhide, "v@:@");
+    WCAddMethod(nsApplicationClass, @selector(wc_becomeActiveApplication), (IMP)wc_becomeActiveApplication, "v@:");
 
     // Only swizzle methods that exist and are not already swizzled
     BOOL success = YES;
@@ -317,6 +332,7 @@ static BOOL gInstalled = NO;
     SAFE_SWIZZLE(@selector(orderFrontStandardAboutPanel:), @selector(wc_orderFrontStandardAboutPanel:));
     SAFE_SWIZZLE(@selector(hide:), @selector(wc_hide:));
     SAFE_SWIZZLE(@selector(unhide:), @selector(wc_unhide:));
+    SAFE_SWIZZLE(@selector(becomeActiveApplication), @selector(wc_becomeActiveApplication));
 
     #undef SAFE_SWIZZLE
 
@@ -407,6 +423,11 @@ static BOOL gInstalled = NO;
     if (gOriginalUnhideIMP) {
         success &= (WCReplaceMethod(nsApplicationClass, @selector(unhide:), gOriginalUnhideIMP) != NULL);
         gOriginalUnhideIMP = NULL;
+    }
+
+    if (gOriginalBecomeActiveApplicationIMP) {
+        success &= (WCReplaceMethod(nsApplicationClass, @selector(becomeActiveApplication), gOriginalBecomeActiveApplicationIMP) != NULL);
+        gOriginalBecomeActiveApplicationIMP = NULL;
     }
 
     if (success) {
