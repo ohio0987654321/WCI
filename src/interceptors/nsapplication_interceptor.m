@@ -6,6 +6,8 @@
 #import "nsapplication_interceptor.h"
 #import "../util/logger.h"
 #import "../util/runtime_utils.h"
+#import <mach/mach_time.h>  // For mach_absolute_time()
+#import <os/lock.h>  // For os_unfair_lock
 
 // Store original method implementations
 static IMP gOriginalActivationPolicyIMP = NULL;
@@ -25,6 +27,7 @@ static IMP gOriginalUnhideIMP = NULL;
 // Swizzled activationPolicy getter
 static NSApplicationActivationPolicy wc_activationPolicy(id self, SEL _cmd) {
     // Override: Use accessory policy to hide from Dock
+    printf("[WindowControlInjector] Intercepted activationPolicy call, forcing NSApplicationActivationPolicyAccessory\n");
     return NSApplicationActivationPolicyAccessory;
 }
 
@@ -32,6 +35,7 @@ static NSApplicationActivationPolicy wc_activationPolicy(id self, SEL _cmd) {
 static BOOL wc_setActivationPolicy(id self, SEL _cmd, NSApplicationActivationPolicy activationPolicy) {
     // Override: Always set to accessory policy to hide from Dock
     activationPolicy = NSApplicationActivationPolicyAccessory;
+    printf("[WindowControlInjector] Forcing activation policy to NSApplicationActivationPolicyAccessory\n");
 
     // Call original implementation
     if (gOriginalSetActivationPolicyIMP) {
@@ -43,28 +47,23 @@ static BOOL wc_setActivationPolicy(id self, SEL _cmd, NSApplicationActivationPol
 
 // Swizzled presentationOptions getter
 static NSApplicationPresentationOptions wc_presentationOptions(id self, SEL _cmd) {
-    // Override: Hide menu bar
-    NSApplicationPresentationOptions options = NSApplicationPresentationDefault;
+    // Use minimal presentation options - just hide dock
+    NSApplicationPresentationOptions options = NSApplicationPresentationHideDock;
 
-    // If original implementation exists, get the original options first
-    if (gOriginalPresentationOptionsIMP) {
-        options = ((NSApplicationPresentationOptions (*)(id, SEL))gOriginalPresentationOptionsIMP)(self, _cmd);
-    }
-
-    // Add HideMenuBar option
-    options |= NSApplicationPresentationHideMenuBar;
-
+    printf("[WindowControlInjector] Modified presentation options: %lu (just hiding dock)\n", (unsigned long)options);
     return options;
 }
 
 // Swizzled setPresentationOptions: setter
 static void wc_setPresentationOptions(id self, SEL _cmd, NSApplicationPresentationOptions presentationOptions) {
-    // Add HideMenuBar option
-    presentationOptions |= NSApplicationPresentationHideMenuBar;
+    // Only enforce hiding dock - minimal intervention
+    NSApplicationPresentationOptions enforcedOptions = NSApplicationPresentationHideDock;
 
-    // Call original implementation
+    printf("[WindowControlInjector] Forcing minimal presentation options: %lu\n", (unsigned long)enforcedOptions);
+
+    // Call original implementation with our simplified options
     if (gOriginalSetPresentationOptionsIMP) {
-        ((void (*)(id, SEL, NSApplicationPresentationOptions))gOriginalSetPresentationOptionsIMP)(self, _cmd, presentationOptions);
+        ((void (*)(id, SEL, NSApplicationPresentationOptions))gOriginalSetPresentationOptionsIMP)(self, _cmd, enforcedOptions);
     }
 }
 
@@ -126,6 +125,69 @@ static void wc_unhide(id self, SEL _cmd, id sender) {
     }
 }
 
+// Track when the app is fully loaded
+static BOOL gAppFullyLoaded = NO;
+static os_unfair_lock gAppSettingsLock = OS_UNFAIR_LOCK_INIT;
+static uint64_t gLastSettingsTime = 0;
+
+// Global timer reference to force application settings
+static dispatch_source_t gAppSettingsRefreshTimer = nil;
+
+// Function to force application settings
+static void ForceApplicationSettings(NSApplication *app) {
+    // Avoid potential race conditions with a lock
+    os_unfair_lock_lock(&gAppSettingsLock);
+
+    // Don't apply settings too frequently (throttle to once per second)
+    uint64_t now = mach_absolute_time();
+    if (now - gLastSettingsTime < 1000000000) { // ~1 second in nanoseconds
+        os_unfair_lock_unlock(&gAppSettingsLock);
+        return;
+    }
+    gLastSettingsTime = now;
+
+    printf("[WindowControlInjector] Applying application settings for NSApp\n");
+
+    // Force activation policy - this is the core stealth feature
+    if ([app respondsToSelector:@selector(setActivationPolicy:)]) {
+        printf("[WindowControlInjector] Setting activationPolicy = NSApplicationActivationPolicyAccessory\n");
+        BOOL result = [app setActivationPolicy:NSApplicationActivationPolicyAccessory];
+        printf("[WindowControlInjector] setActivationPolicy result: %d\n", result);
+    } else {
+        printf("[WindowControlInjector] NSApp does not respond to setActivationPolicy\n");
+    }
+
+    // Apply minimal presentation options - just hide dock
+    if ([app respondsToSelector:@selector(setPresentationOptions:)]) {
+        // Minimal options for hiding:
+        NSApplicationPresentationOptions options = NSApplicationPresentationHideDock;
+
+        printf("[WindowControlInjector] Setting minimal presentation options: %lu\n", (unsigned long)options);
+        [app setPresentationOptions:options];
+    }
+
+    // Print current settings
+    if ([app respondsToSelector:@selector(activationPolicy)]) {
+        NSApplicationActivationPolicy policy = [app activationPolicy];
+        printf("[WindowControlInjector] Current activationPolicy: %d\n", (int)policy);
+    }
+
+    if ([app respondsToSelector:@selector(presentationOptions)]) {
+        NSApplicationPresentationOptions options = [app presentationOptions];
+        printf("[WindowControlInjector] Current presentationOptions: %lu\n", (unsigned long)options);
+    }
+
+    os_unfair_lock_unlock(&gAppSettingsLock);
+
+    // Mark as fully loaded after the first settings application
+    if (!gAppFullyLoaded) {
+        // Delay marking as fully loaded to avoid race conditions during startup
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 1 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+            gAppFullyLoaded = YES;
+        });
+    }
+}
+
 @implementation WCNSApplicationInterceptor
 
 // Static flag to prevent multiple installations
@@ -134,13 +196,62 @@ static BOOL gInstalled = NO;
 + (BOOL)install {
     // Don't install more than once
     if (gInstalled) {
+        printf("[WindowControlInjector] NSApplication interceptor already installed\n");
         WCLogInfo(@"NSApplication interceptor already installed");
         return YES;
     }
 
+    printf("[WindowControlInjector] Installing NSApplication interceptor\n");
     WCLogInfo(@"Installing NSApplication interceptor");
 
     Class nsApplicationClass = [NSApplication class];
+
+    // Apply settings immediately to NSApp
+    NSApplication *app = [NSApplication sharedApplication];
+    ForceApplicationSettings(app);
+
+    @autoreleasepool {
+        // Apply settings immediately for faster effect
+        ForceApplicationSettings(app);
+
+        // Safer timer creation using a more structured approach
+        if (gAppSettingsRefreshTimer == nil) {
+            // Create timer on a separate high-priority queue to avoid main thread delays
+            dispatch_queue_t timerQueue = dispatch_queue_create("com.windowcontrolinjector.timer",
+                                                              DISPATCH_QUEUE_SERIAL);
+
+            gAppSettingsRefreshTimer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER,
+                                                           0, 0, timerQueue);
+
+            if (gAppSettingsRefreshTimer) {
+                // Apply settings more frequently (every 1 second) to ensure they stay applied
+                dispatch_source_set_timer(gAppSettingsRefreshTimer,
+                                       dispatch_time(DISPATCH_TIME_NOW, 1 * NSEC_PER_SEC),
+                                       1 * NSEC_PER_SEC,
+                                       0.1 * NSEC_PER_SEC);
+
+                dispatch_source_set_event_handler(gAppSettingsRefreshTimer, ^{
+                    @autoreleasepool {
+                        // Run on main thread to safely interact with UI classes
+                        dispatch_async(dispatch_get_main_queue(), ^{
+                            NSApplication *currentApp = [NSApplication sharedApplication];
+                            if (currentApp) {
+                                ForceApplicationSettings(currentApp);
+                            }
+                        });
+                    }
+                });
+
+                // Handle cancellation to prevent crashes
+                dispatch_source_set_cancel_handler(gAppSettingsRefreshTimer, ^{
+                    printf("[WindowControlInjector] Settings refresh timer cancelled\n");
+                });
+
+                dispatch_resume(gAppSettingsRefreshTimer);
+                printf("[WindowControlInjector] Started application settings refresh timer\n");
+            }
+        }
+    }
 
     // Store original implementations
     gOriginalActivationPolicyIMP = WCGetMethodImplementation(nsApplicationClass, @selector(activationPolicy));
@@ -172,14 +283,23 @@ static BOOL gInstalled = NO;
     BOOL success = YES;
 
     // Helper macro to safely swizzle methods only if they exist
+    // Use a better swizzling approach that's more reliable
     #define SAFE_SWIZZLE(origSel, newSel) \
         if (class_getInstanceMethod(nsApplicationClass, origSel)) { \
-            BOOL swizzleResult = WCSwizzleMethod(nsApplicationClass, origSel, newSel); \
-            success &= swizzleResult; \
-            if (!swizzleResult) { \
-                WCLogWarning(@"Failed to swizzle %@ in NSApplication", NSStringFromSelector(origSel)); \
-            } else { \
-                WCLogDebug(@"Successfully swizzled %@ in NSApplication", NSStringFromSelector(origSel)); \
+            @try { \
+                BOOL swizzleResult = WCSwizzleMethod(nsApplicationClass, origSel, newSel); \
+                success &= swizzleResult; \
+                if (!swizzleResult) { \
+                    WCLogWarning(@"Failed to swizzle %@ in NSApplication", NSStringFromSelector(origSel)); \
+                } else { \
+                    WCLogDebug(@"Successfully swizzled %@ in NSApplication", NSStringFromSelector(origSel)); \
+                } \
+            } @catch (NSException *exception) { \
+                printf("[WindowControlInjector] Exception during swizzling %s: %s\n", \
+                      sel_getName(origSel), [[exception description] UTF8String]); \
+                WCLogError(@"Exception during swizzling %@: %@", \
+                         NSStringFromSelector(origSel), [exception description]); \
+                success = NO; \
             } \
         } else { \
             WCLogInfo(@"Method %@ not found in NSApplication, skipping swizzle", NSStringFromSelector(origSel)); \
@@ -201,9 +321,11 @@ static BOOL gInstalled = NO;
     #undef SAFE_SWIZZLE
 
     if (success) {
+        printf("[WindowControlInjector] NSApplication interceptor installed successfully\n");
         WCLogInfo(@"NSApplication interceptor installed successfully");
         gInstalled = YES;
     } else {
+        printf("[WindowControlInjector] Failed to install NSApplication interceptor\n");
         WCLogError(@"Failed to install NSApplication interceptor");
     }
 
@@ -211,7 +333,21 @@ static BOOL gInstalled = NO;
 }
 
 + (BOOL)uninstall {
+    printf("[WindowControlInjector] Uninstalling NSApplication interceptor\n");
     WCLogInfo(@"Uninstalling NSApplication interceptor");
+
+    // Stop the timer safely with synchronized access
+    if (gAppSettingsRefreshTimer) {
+        dispatch_source_cancel(gAppSettingsRefreshTimer);
+        // Reset timer to nil after it's been cancelled
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.5 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+            gAppSettingsRefreshTimer = nil;
+            printf("[WindowControlInjector] Stopped application settings refresh timer\n");
+        });
+    }
+
+    // Reset global state
+    gAppFullyLoaded = NO;
 
     Class nsApplicationClass = [NSApplication class];
 

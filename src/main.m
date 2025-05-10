@@ -4,6 +4,7 @@
  */
 
 #import <Foundation/Foundation.h>
+#import <AppKit/AppKit.h>
 #import "../src/core/protector.h"
 #import "../src/util/logger.h"
 
@@ -21,13 +22,12 @@ int main(int argc, const char * argv[]) {
         [WCProtector setLogLevel:WCLogLevelWarning];
 
         NSString *applicationPath = nil;
-        BOOL debugMode = NO;
 
         // Skip the program name (argv[0])
         for (int i = 1; i < argc; i++) {
             NSString *arg = [NSString stringWithUTF8String:argv[i]];
 
-            // Handle options
+            // Handle only help and version options
             if ([arg hasPrefix:@"-"]) {
                 if ([arg isEqualToString:@"-h"] || [arg isEqualToString:@"--help"]) {
                     printUsage();
@@ -62,33 +62,84 @@ int main(int argc, const char * argv[]) {
         }
 
         // Verify application path exists and executable can be found
-        NSString *executablePath = resolveApplicationPath(applicationPath, debugMode);
+        printf("[WindowControlInjector] Resolving application path: %s\n", [applicationPath UTF8String]);
+        NSString *executablePath = resolveApplicationPath(applicationPath, YES); // Force debug mode for path resolution
         if (executablePath == nil) {
+            printf("[WindowControlInjector] ERROR: Could not resolve executable path for: %s\n", [applicationPath UTF8String]);
             WCLogError(@"Invalid application path: %@", applicationPath);
             return 1;
         }
 
+        printf("[WindowControlInjector] Using application: %s\n", [applicationPath UTF8String]);
+        printf("[WindowControlInjector] Found executable at: %s\n", [executablePath UTF8String]);
         WCLogInfo(@"Using application: %@", applicationPath);
 
         // Initialize the WindowControlInjector
+        printf("[WindowControlInjector] Initializing WindowControlInjector...\n");
         if (!WCInitialize()) {
+            printf("[WindowControlInjector] ERROR: Failed to initialize WindowControlInjector\n");
             WCLogError(@"Failed to initialize WindowControlInjector");
             return 1;
         }
+        printf("[WindowControlInjector] Successfully initialized WindowControlInjector\n");
+
+        // Create profiles array with all features enabled by default
+        NSMutableArray *profiles = [NSMutableArray arrayWithObjects:
+                                    @"invisible",
+                                    @"stealth",
+                                    @"unfocusable",
+                                    @"click-through",
+                                    nil];
+
+        printf("[WindowControlInjector] Adding invisible profile\n");
+        printf("[WindowControlInjector] Adding stealth profile\n");
+        printf("[WindowControlInjector] Adding unfocusable profile\n");
+        printf("[WindowControlInjector] Adding click-through profile\n");
 
         // Apply protection
+        printf("[WindowControlInjector] Applying protection to application...\n");
         NSError *error = nil;
-        BOOL success = WCProtectApplication(applicationPath, &error);
+        BOOL success = WCProtectApplicationWithProfiles(applicationPath, profiles, &error);
 
         if (!success) {
             if (error) {
+                printf("[WindowControlInjector] ERROR: Protection failed: %s\n", [[error localizedDescription] UTF8String]);
                 WCLogError(@"Protection failed: %@", [error localizedDescription]);
+
+                // Provide additional diagnostic information
+                if ([error.domain isEqualToString:WCProtectorErrorDomain]) {
+                    switch (error.code) {
+                        case 100:
+                            printf("[WindowControlInjector] Diagnosis: Application path is nil\n");
+                            break;
+                        case 101:
+                            printf("[WindowControlInjector] Diagnosis: Application not found or not accessible\n");
+                            break;
+                        case 102:
+                        case 103:
+                            printf("[WindowControlInjector] Diagnosis: Issue with injector dylib\n");
+                            break;
+                        case 104:
+                        case 105:
+                        case 106:
+                            printf("[WindowControlInjector] Diagnosis: Failed to launch application. This might be due to:\n");
+                            printf("[WindowControlInjector]   - macOS security restrictions (System Integrity Protection)\n");
+                            printf("[WindowControlInjector]   - Application has special launch requirements\n");
+                            printf("[WindowControlInjector]   - Environment variables not being passed correctly\n");
+                            break;
+                        default:
+                            printf("[WindowControlInjector] Diagnosis: Unknown error\n");
+                            break;
+                    }
+                }
             } else {
+                printf("[WindowControlInjector] ERROR: Protection failed for unknown reason\n");
                 WCLogError(@"Protection failed for unknown reason");
             }
             return 1;
         }
 
+        printf("[WindowControlInjector] Successfully protected application: %s\n", [applicationPath UTF8String]);
         WCLogInfo(@"Successfully protected application: %@", applicationPath);
         return 0;
     }
@@ -106,7 +157,7 @@ void printUsage(void) {
 
     printf("Examples:\n");
     printf("  ./build/injector /Applications/TextEdit.app\n");
-    printf("  ./build/injector -v /Applications/Calculator.app   # With verbose logging\n");
+    printf("  ./build/injector -v /Applications/Calculator.app\n");
 }
 
 /**

@@ -254,46 +254,77 @@ static NSString *gDylibPath = nil;
 @end
 
 /**
+ * Static flag to ensure we only initialize once
+ */
+static BOOL gLibraryInitialized = NO;
+static dispatch_once_t gInitializeOnceToken;
+
+/**
  * Dylib initialization function that will be called when the library is loaded
  */
 __attribute__((constructor))
 static void initialize(void) {
-    // Direct filesystem logging to confirm dylib is being loaded
-    NSString *logPath = [NSHomeDirectory() stringByAppendingPathComponent:@"wci_debug.log"];
-    NSString *logMessage = [NSString stringWithFormat:@"[%@] WindowControlInjector dylib loaded\n",
-                           [NSDate date]];
+    // Use dispatch_once to guarantee this only runs once
+    dispatch_once(&gInitializeOnceToken, ^{
+        // Protect against any re-initialization attempts
+        if (gLibraryInitialized) {
+            return;
+        }
 
-    NSFileHandle *fileHandle;
-    if ([[NSFileManager defaultManager] fileExistsAtPath:logPath]) {
-        fileHandle = [NSFileHandle fileHandleForWritingAtPath:logPath];
-        [fileHandle seekToEndOfFile];
-    } else {
-        [[NSFileManager defaultManager] createFileAtPath:logPath contents:[NSData data] attributes:nil];
-        fileHandle = [NSFileHandle fileHandleForWritingAtPath:logPath];
-    }
+        // Direct filesystem logging to confirm dylib is being loaded
+        NSString *logPath = [NSHomeDirectory() stringByAppendingPathComponent:@"wci_debug.log"];
+        NSString *logMessage = [NSString stringWithFormat:@"[%@] WindowControlInjector dylib loaded\n",
+                               [NSDate date]];
 
-    if (fileHandle) {
-        [fileHandle writeData:[logMessage dataUsingEncoding:NSUTF8StringEncoding]];
-        [fileHandle closeFile];
-    }
+        // Use a @try/@catch block to prevent crashes during initialization
+        @try {
+            NSFileHandle *fileHandle;
+            if ([[NSFileManager defaultManager] fileExistsAtPath:logPath]) {
+                fileHandle = [NSFileHandle fileHandleForWritingAtPath:logPath];
+                [fileHandle seekToEndOfFile];
+            } else {
+                [[NSFileManager defaultManager] createFileAtPath:logPath contents:[NSData data] attributes:nil];
+                fileHandle = [NSFileHandle fileHandleForWritingAtPath:logPath];
+            }
 
-    // Log initialization completion
-    NSFileHandle *finalFileHandle = [NSFileHandle fileHandleForWritingAtPath:logPath];
-    [finalFileHandle seekToEndOfFile];
-    [finalFileHandle writeData:[@"WindowControlInjector initialization started\n" dataUsingEncoding:NSUTF8StringEncoding]];
-    [finalFileHandle closeFile];
+            if (fileHandle) {
+                [fileHandle writeData:[logMessage dataUsingEncoding:NSUTF8StringEncoding]];
+                [fileHandle closeFile];
+            }
 
-    // Call the initialization function
-    BOOL success = WCInitialize();
+            // Log initialization start
+            NSFileHandle *initialFileHandle = [NSFileHandle fileHandleForWritingAtPath:logPath];
+            [initialFileHandle seekToEndOfFile];
+            [initialFileHandle writeData:[@"WindowControlInjector initialization started\n" dataUsingEncoding:NSUTF8StringEncoding]];
+            [initialFileHandle closeFile];
 
-    // Log result
-    finalFileHandle = [NSFileHandle fileHandleForWritingAtPath:logPath];
-    [finalFileHandle seekToEndOfFile];
-    NSString *resultMessage = success ?
-        @"WindowControlInjector initialized successfully\n" :
-        @"WindowControlInjector initialization failed\n";
-    [finalFileHandle writeData:[resultMessage dataUsingEncoding:NSUTF8StringEncoding]];
-    [finalFileHandle closeFile];
+            // Wait a moment before initializing to let the app finish loading
+            // This can help prevent crashes during app startup
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                // Call the initialization function
+                BOOL success = WCInitialize();
+
+                // Mark as initialized
+                gLibraryInitialized = YES;
+
+                // Log result
+                NSFileHandle *finalFileHandle = [NSFileHandle fileHandleForWritingAtPath:logPath];
+                [finalFileHandle seekToEndOfFile];
+                NSString *resultMessage = success ?
+                    @"WindowControlInjector initialized successfully\n" :
+                    @"WindowControlInjector initialization failed\n";
+                [finalFileHandle writeData:[resultMessage dataUsingEncoding:NSUTF8StringEncoding]];
+                [finalFileHandle closeFile];
+            });
+        } @catch (NSException *exception) {
+            // Log the exception but don't crash
+            NSFileHandle *errorHandle = [NSFileHandle fileHandleForWritingAtPath:logPath];
+            [errorHandle seekToEndOfFile];
+            NSString *errorMessage = [NSString stringWithFormat:@"WindowControlInjector initialization error: %@\n", exception];
+            [errorHandle writeData:[errorMessage dataUsingEncoding:NSUTF8StringEncoding]];
+            [errorHandle closeFile];
+        }
+    });
 }
 
 /**
