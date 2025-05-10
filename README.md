@@ -13,7 +13,7 @@ A macOS utility that uses dylib injection to modify the behavior and appearance 
 ## Usage
 
 ```
-Usage: injector [options] <application-path>
+Usage: ./build/injector [options] <application-path>
 
 Options:
   --invisible        Make windows invisible to screen recording
@@ -38,19 +38,19 @@ Window interaction control:
 
 ```bash
 # Apply direct-control with interaction enabled (default behavior)
-injector /Applications/TextEdit.app
+./build/injector /Applications/TextEdit.app
 
 # Make TextEdit invisible to screen recording only
-injector --invisible /Applications/TextEdit.app
+./build/injector --invisible /Applications/TextEdit.app
 
 # Hide Calculator from the Dock and make it unfocusable
-injector --stealth --unfocusable /Applications/Calculator.app
+./build/injector --stealth --unfocusable /Applications/Calculator.app
 
 # Enable advanced protection but allow normal interaction (best of both worlds)
-injector --direct-control --enable-interaction /Applications/Safari.app
+./build/injector --direct-control --enable-interaction /Applications/Safari.app
 
 # Toggle interaction off for an already-running application
-injector --disable-interaction /Applications/Terminal.app
+./build/injector --disable-interaction /Applications/Terminal.app
 ```
 
 ## Profiles
@@ -115,23 +115,15 @@ This feature is especially useful when using the direct-control profile, allowin
 2. Maintain full protection against screen recording
 3. Toggle interaction on/off as needed without restarting the application
 
+### System-Level Limitations
 
-## Quick Launch Script
+While WindowControlInjector can effectively hide an application from screenshots, the Dock, and the status bar, there are some visual cues that are unavoidable at the macOS system level:
 
-For convenience, a quick launch script is provided:
+- **Window focus indicators**: When a protected application has keyboard focus, other applications' title bars will still change to an inactive color state. This happens because macOS needs to track which application has input focus for keyboard events, and it signals this change to all applications.
 
-```bash
-# Launch with default settings (secure and interactive)
-./direct_launch.sh /Applications/Safari.app
+- **Menu bar changes**: Depending on the protection profiles used, the system menu bar may still show the protected application's menu items when it has focus.
 
-# Launch with window interaction enabled
-./direct_launch.sh --interactive /Applications/TextEdit.app
-
-# Launch with window interaction explicitly disabled
-./direct_launch.sh --no-interaction /Applications/Calculator.app
-```
-
-The script automatically builds the injector if needed and applies the direct-control profile.
+These limitations exist because they are fundamental to how macOS manages application focus and cannot be completely overridden without modifying core system components. For maximum stealth in sensitive scenarios, consider using the `--disable-interaction` flag, which minimizes (but does not completely eliminate) these visual cues.
 
 ## Building from Source
 
