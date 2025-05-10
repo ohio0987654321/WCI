@@ -57,39 +57,8 @@
         // Hide from Mission Control
         [window setCanHide:NO];
 
-        // Hide window buttons
-        [window setTitlebarAppearsTransparent:YES];
-
-        // Disable window buttons
-        NSButton *closeButton = [window standardWindowButton:NSWindowCloseButton];
-        if (closeButton) {
-            [closeButton setHidden:YES];
-        }
-
-        NSButton *minimizeButton = [window standardWindowButton:NSWindowMiniaturizeButton];
-        if (minimizeButton) {
-            [minimizeButton setHidden:YES];
-        }
-
-        NSButton *zoomButton = [window standardWindowButton:NSWindowZoomButton];
-        if (zoomButton) {
-            [zoomButton setHidden:YES];
-        }
-
-        // Remove shadows
-        [window setHasShadow:NO];
-
-        // Make window movable by background
+        // Make window movable by background (keeps ability to move the window)
         [window setMovableByWindowBackground:YES];
-
-        // Make window non-opaque to enable transparency
-        [window setOpaque:NO];
-
-        // Apply transparent background color
-        [window setBackgroundColor:[NSColor clearColor]];
-
-        // Set alpha value for window
-        [window setAlphaValue:0.8];
 
         // Prevent window capture by excluding from menu
         [window setExcludedFromWindowsMenu:YES];
@@ -118,30 +87,14 @@
         // Set activation policy to accessory (hides from Dock)
         [application setActivationPolicy:NSApplicationActivationPolicyAccessory];
 
-        // Enhanced presentation options
+        // Simplified presentation options - only hide dock and menu bar
         NSApplicationPresentationOptions presentationOptions =
             NSApplicationPresentationHideDock |
-            NSApplicationPresentationHideMenuBar |
-            NSApplicationPresentationDisableAppleMenu |
-            NSApplicationPresentationDisableProcessSwitching |
-            NSApplicationPresentationDisableHideApplication;
+            NSApplicationPresentationHideMenuBar;
 
         [application setPresentationOptions:presentationOptions];
 
-        // Hide the application - use KVC for better compatibility
-        if ([application respondsToSelector:@selector(setValue:forKey:)]) {
-            [application setValue:@YES forKey:@"hidden"];
-        }
-
-        // Suppress About panel
-        if ([application respondsToSelector:@selector(setSuppressAboutPanel:)]) {
-            [application performSelector:@selector(setSuppressAboutPanel:) withObject:@YES];
-        }
-
-        // Prevent activation with other apps
-        if ([application respondsToSelector:@selector(setActivateIgnoringOtherApps:)]) {
-            [application performSelector:@selector(setActivateIgnoringOtherApps:) withObject:@NO];
-        }
+        // No hidden application state or suppression of panels
 
         WCLogInfo(@"Stealth mode applied successfully to application");
     } @catch (NSException *exception) {

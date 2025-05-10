@@ -9,6 +9,7 @@
 #import "../include/profiles.h"
 #import "../src/util/logger.h"
 #import "../profiles/direct_control.h"
+#import "../profiles/core.h"
 
 // Function prototypes
 void printUsage(void);
@@ -58,6 +59,8 @@ int main(int argc, const char * argv[]) {
                     [profileNames addObject:@"click-through"];
                 } else if ([arg isEqualToString:@"--direct-control"]) {
                     [profileNames addObject:@"direct-control"];
+                } else if ([arg isEqualToString:@"--core"]) {
+                    [profileNames addObject:@"core"];
                 } else if ([arg isEqualToString:@"--all"]) {
                     applyAll = YES;
                 } else if ([arg isEqualToString:@"--enable-interaction"]) {
@@ -109,14 +112,12 @@ int main(int argc, const char * argv[]) {
             [profileNames removeAllObjects]; // Clear any individually specified profiles
             [profileNames addObjectsFromArray:@[@"invisible", @"stealth", @"unfocusable", @"click-through"]];
         }
-        // If no profiles specified, use direct-control with window interaction enabled
+        // If no profiles specified, use core profile
         else if (profileNames.count == 0) {
             [profileNames removeAllObjects];
-            [profileNames addObject:@"direct-control"];
+            [profileNames addObject:@"core"];
 
-            // Enable window interaction by default for better usability
-            WCLogInfo(@"Using default profile (direct-control) with window interaction enabled");
-            [WCDirectControlProfile enableWindowInteraction];
+            WCLogInfo(@"Using default profile (core) with essential functionality");
         }
 
         NSError *error = nil;
@@ -154,11 +155,12 @@ int main(int argc, const char * argv[]) {
 void printUsage(void) {
     printf("Usage: injector [options] <application-path>\n\n");
     printf("Options:\n");
+    printf("  --core             Core functionality (screen recording protection, dock/status bar hiding) [DEFAULT]\n");
     printf("  --invisible        Make windows invisible to screen recording\n");
     printf("  --stealth          Hide application from Dock and status bar\n");
     printf("  --unfocusable      Prevent windows from receiving focus\n");
     printf("  --click-through    Make windows click-through (ignore mouse events)\n");
-    printf("  --direct-control   Enhanced control using direct Objective-C messaging (recommended)\n");
+    printf("  --direct-control   Enhanced control using direct Objective-C messaging\n");
     printf("  --all              Apply all profiles\n\n");
 
     printf("Window interaction control:\n");
@@ -171,11 +173,11 @@ void printUsage(void) {
     printf("  --version          Show version information\n\n");
 
     printf("Examples:\n");
-    printf("  injector /Applications/TextEdit.app               # Uses direct-control with interaction enabled (default)\n");
-    printf("  injector --invisible /Applications/TextEdit.app   # Apply only invisibility\n");
-    printf("  injector --stealth --unfocusable /Applications/Calculator.app\n");
-    printf("  injector --direct-control --enable-interaction /Applications/Safari.app  # Protected but interactive\n");
-    printf("  injector --direct-control /Applications/Safari.app --disable-interaction # Toggle interaction off\n");
+    printf("  ./build/injector /Applications/TextEdit.app               # Uses core profile (default)\n");
+    printf("  ./build/injector --invisible /Applications/TextEdit.app   # Apply only invisibility\n");
+    printf("  ./build/injector --stealth --unfocusable /Applications/Calculator.app\n");
+    printf("  ./build/injector --direct-control --enable-interaction /Applications/Safari.app  # Advanced protection\n");
+    printf("  ./build/injector --core /Applications/Terminal.app        # Explicit core profile\n");
 }
 
 /**

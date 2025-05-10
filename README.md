@@ -5,10 +5,8 @@ A macOS utility that uses dylib injection to modify the behavior and appearance 
 ## Features
 
 - **Screen Recording Protection**: Make application windows invisible to screen recording tools
-- **UI Element Hiding**: Hide applications from Dock, status bar, and App Switcher
-- **Focus Control**: Prevent windows from receiving keyboard focus (with optional interactive mode)
-- **Click-Through Support**: Allow clicks to pass through windows
-- **Custom Property Control**: Override specific NSWindow and NSApplication properties
+- **Dock Icon Hiding**: Hide applications from the macOS Dock
+- **Status Bar Hiding**: Hide menu bar when the application has focus
 
 ## Usage
 
@@ -16,11 +14,12 @@ A macOS utility that uses dylib injection to modify the behavior and appearance 
 Usage: ./build/injector [options] <application-path>
 
 Options:
+  --core             Core functionality (screen recording protection, dock/status bar hiding) [DEFAULT]
   --invisible        Make windows invisible to screen recording
   --stealth          Hide application from Dock and status bar
   --unfocusable      Prevent windows from receiving focus
   --click-through    Make windows click-through (ignore mouse events)
-  --direct-control   Enhanced control using direct Objective-C messaging (recommended)
+  --direct-control   Enhanced control using direct Objective-C messaging
   --all              Apply all profiles
 
 Window interaction control:
@@ -32,12 +31,12 @@ Window interaction control:
   --version          Show version information
 ```
 
-**Default Behavior**: Running the injector with just an application path will apply the `direct-control` profile with interaction enabled, giving you both protection from screen recording and normal window usability.
+**Default Behavior**: Running the injector with just an application path will apply the `core` profile, providing essential protection without unnecessary visual effects.
 
 ### Examples
 
 ```bash
-# Apply direct-control with interaction enabled (default behavior)
+# Apply core profile (default behavior)
 ./build/injector /Applications/TextEdit.app
 
 # Make TextEdit invisible to screen recording only
@@ -46,74 +45,45 @@ Window interaction control:
 # Hide Calculator from the Dock and make it unfocusable
 ./build/injector --stealth --unfocusable /Applications/Calculator.app
 
-# Enable advanced protection but allow normal interaction (best of both worlds)
-./build/injector --direct-control --enable-interaction /Applications/Safari.app
+# Use the core profile explicitly
+./build/injector --core /Applications/Safari.app
 
-# Toggle interaction off for an already-running application
-./build/injector --disable-interaction /Applications/Terminal.app
+# Use enhanced protection with direct-control
+./build/injector --direct-control /Applications/Terminal.app
 ```
 
 ## Profiles
 
-### Invisible Profile
+### Core Profile
 
-Makes application windows invisible to screen recording and screenshots by:
-- Setting the window's sharing type to `NSWindowSharingNone`
-- Configuring the window's collection behavior to exclude from window lists and screenshots
-- Making the window non-opaque and setting transparent background
-- Removing window shadows
-- Making the titlebar transparent for better stealth
+Implements the essential functionality needed for privacy and discretion:
+- Screen recording protection by setting the window's sharing type to `NSWindowSharingNone`
+- Dock icon hiding by using accessory activation policy
+- Status bar hiding when the application has focus
 
-### Stealth Profile
+This profile focuses only on the necessary features without any additional visual effects or behavioral modifications.
 
-Hides the application from the Dock, status bar, and App Switcher by:
-- Modifying the application's activation policy to `NSApplicationActivationPolicyAccessory`
-- Setting presentation options to hide the Dock and menu bar
-- Preventing application activation through typical OS X means
-- Configuring windows to be excluded from window menus and lists
-- Setting special collection behavior to keep windows out of standard window management
-- Allowing windows to be hidden and making titlebar transparent
-- Setting window level below normal to prevent accidental focus
+### Other Available Profiles
 
-### Unfocusable Profile
+For advanced use cases, additional profiles are available:
 
-Prevents windows from receiving keyboard focus by:
-- Setting `canBecomeKey` and `canBecomeMain` properties to `NO`
-- Configuring collection behavior to prevent window from being included in focus cycles
-- Excluding windows from window menus and keyboard-based window selection
-- Preventing interaction with window backgrounds
-- Visually styling windows to appear unfocused with transparent titlebar
-- Setting application activity state to prevent focus
+#### Invisible Profile
+- Makes windows invisible to screen recording with `NSWindowSharingNone`
 
-### Click-Through Profile
+#### Stealth Profile
+- Hides application from Dock with `NSApplicationActivationPolicyAccessory`
+- Hides menu bar with presentation options
 
-Makes windows click-through, allowing mouse events to pass through to underlying windows by:
-- Setting `ignoresMouseEvents` to `YES`
-- Making the window visually indicate its click-through status with transparency
-- Setting collection behavior to mark the window as transient and stationary
-- Removing window shadows to better indicate non-interactive nature
-- Ensuring the window stays visible but unfocusable with a transparent titlebar
-- Allowing repositioning via window background if needed
+#### Unfocusable Profile
+- Prevents windows from receiving keyboard focus
+- Useful when you don't need to interact with the application
 
-### Direct Control Profile
+#### Click-Through Profile
+- Makes windows click-through by setting `ignoresMouseEvents` to `YES`
 
-Provides enhanced window and application control using direct Objective-C messaging:
-- Implements stronger screen recording protection via multiple techniques
-- Creates dynamic window subclasses at runtime for improved behavior control
-- Uses notification observers to detect and protect new windows automatically
-- Periodically reapplies settings to ensure consistent behavior
-- Supports dynamic toggling of window interaction modes
-
-### Window Interaction Control
-
-Controls whether protected windows can receive keyboard focus:
-- `--enable-interaction`: Allow windows to receive keyboard focus while maintaining protection (default)
-- `--disable-interaction`: Prevent windows from receiving keyboard focus
-
-This feature is especially useful when using the direct-control profile, allowing you to:
-1. Work with sensitive content normally (typing, keyboard shortcuts, etc.)
-2. Maintain full protection against screen recording
-3. Toggle interaction on/off as needed without restarting the application
+#### Direct Control Profile
+- Advanced window control using direct Objective-C messaging
+- Provides stronger screen recording protection for complex applications
 
 ### System-Level Limitations
 
@@ -123,7 +93,7 @@ While WindowControlInjector can effectively hide an application from screenshots
 
 - **Menu bar changes**: Depending on the protection profiles used, the system menu bar may still show the protected application's menu items when it has focus.
 
-These limitations exist because they are fundamental to how macOS manages application focus and cannot be completely overridden without modifying core system components. For maximum stealth in sensitive scenarios, consider using the `--disable-interaction` flag, which minimizes (but does not completely eliminate) these visual cues.
+These limitations exist because they are fundamental to how macOS manages application focus and cannot be completely overridden without modifying core system components.
 
 ## Building from Source
 

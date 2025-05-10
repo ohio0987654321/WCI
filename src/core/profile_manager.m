@@ -12,6 +12,7 @@
 #import "../../profiles/unfocusable.h"
 #import "../../profiles/click_through.h"
 #import "../../profiles/direct_control.h"
+#import "../../profiles/core.h"
 
 @implementation WCProfileManager {
     NSMutableDictionary<NSString *, id<WCProfile>> *_profiles;
@@ -142,6 +143,7 @@
     // Register built-in profiles
     BOOL success = YES;
 
+    success &= [self registerProfile:[WCCoreProfile profile]];
     success &= [self registerProfile:[WCInvisibleProfile profile]];
     success &= [self registerProfile:[WCStealthProfile profile]];
     success &= [self registerProfile:[WCUnfocusableProfile profile]];
