@@ -53,7 +53,21 @@ WindowControlInjector applies multiple mechanisms automatically:
 
 All protections are applied automatically with a single command - no configuration required.
 
-### System-Level Limitations
+## Refactoring Project
+
+The codebase is currently undergoing refactoring to improve maintainability and architecture. The refactoring focuses on:
+
+1. Improving code organization
+2. Reducing global state
+3. Enhancing error handling
+4. Modernizing method swizzling
+5. Centralizing configuration
+6. Improving logging
+7. Better path resolution
+
+See [refactoring.md](refactoring.md) for a detailed breakdown of the planned improvements.
+
+## System-Level Limitations
 
 While WindowControlInjector provides powerful control over application windows, there are some system-level behaviors that are inherent to macOS:
 
