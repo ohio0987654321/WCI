@@ -11,71 +11,41 @@ A macOS utility that uses dylib injection to modify the behavior and appearance 
 ## Usage
 
 ```
-Usage: ./build/injector [options] <application-path>
+Usage: injector [options] <application-path>
 
 Options:
-  --core             Core functionality (screen recording protection, dock/status bar hiding) [DEFAULT]
-  --invisible        Make windows invisible to screen recording
-  --stealth          Hide application from Dock and status bar
-  --direct-control   Enhanced control using direct Objective-C messaging
-  --all              Apply all profiles
-
-Window interaction control:
-  --enable-interaction  Allow windows to receive keyboard focus (while maintaining protection)
-  --disable-interaction Prevent windows from receiving keyboard focus
-
   -v, --verbose      Enable verbose logging
   -h, --help         Show this help message
   --version          Show version information
 ```
 
-**Default Behavior**: Running the injector with just an application path will apply the `core` profile, providing essential protection without unnecessary visual effects.
-
 ### Examples
 
 ```bash
-# Apply core profile (default behavior)
+# Apply all protections (default behavior)
 ./build/injector /Applications/TextEdit.app
 
-# Make TextEdit invisible to screen recording only
-./build/injector --invisible /Applications/TextEdit.app
-
-# Hide Calculator from the Dock
-./build/injector --stealth /Applications/Calculator.app
-
-# Use the core profile explicitly
-./build/injector --core /Applications/Safari.app
-
-# Use enhanced protection with direct-control
-./build/injector --direct-control /Applications/Terminal.app
+# With verbose logging
+./build/injector -v /Applications/Calculator.app
 ```
 
-## Profiles
+## How It Works
 
-### Core Profile
+WindowControlInjector applies multiple protection mechanisms automatically:
 
-Implements the essential functionality needed for privacy and discretion:
-- Screen recording protection by setting the window's sharing type to `NSWindowSharingNone`
-- Dock icon hiding by using accessory activation policy
-- Status bar hiding when the application has focus
+1. **Screen Recording Protection**
+   - Sets window sharing type to `NSWindowSharingNone`
+   - Applies immediately when the application launches
 
-This profile focuses only on the necessary features without any additional visual effects or behavioral modifications.
+2. **Dock Icon Hiding**
+   - Sets activation policy to `NSApplicationActivationPolicyAccessory`
+   - Prevents the application icon from appearing in the Dock
 
-### Other Available Profiles
+3. **Menu Bar Hiding**
+   - Applies `NSApplicationPresentationHideMenuBar` presentation options
+   - Hides the menu bar when the application has focus
 
-For advanced use cases, additional profiles are available:
-
-#### Invisible Profile
-- Makes windows invisible to screen recording with `NSWindowSharingNone`
-
-#### Stealth Profile
-- Hides application from Dock with `NSApplicationActivationPolicyAccessory`
-- Hides menu bar with presentation options
-
-
-#### Direct Control Profile
-- Advanced window control using direct Objective-C messaging
-- Provides stronger screen recording protection for complex applications
+All protections are applied automatically with a single command - no configuration required.
 
 ### System-Level Limitations
 
@@ -83,7 +53,7 @@ While WindowControlInjector can effectively hide an application from screenshots
 
 - **Window focus indicators**: When a protected application has keyboard focus, other applications' title bars will still change to an inactive color state. This happens because macOS needs to track which application has input focus for keyboard events, and it signals this change to all applications.
 
-- **Menu bar changes**: Depending on the protection profiles used, the system menu bar may still show the protected application's menu items when it has focus.
+- **Menu bar changes**: The system menu bar may still show subtle changes when a protected application has focus, though the application's menu items will be hidden.
 
 These limitations exist because they are fundamental to how macOS manages application focus and cannot be completely overridden without modifying core system components.
 

@@ -19,6 +19,15 @@ typedef NS_ENUM(NSInteger, WCLogLevel) {
     WCLogLevelDebug   = 4
 };
 
+// Error domain for WindowControlInjector
+extern NSErrorDomain const WCErrorDomain;
+
+// Profile name constants
+extern NSString * const WCProfileNameInvisible;
+extern NSString * const WCProfileNameStealth;
+extern NSString * const WCProfileNameUnfocusable;
+extern NSString * const WCProfileNameClickThrough;
+
 /**
  * @brief Logger class for WindowControlInjector
  *
@@ -100,5 +109,9 @@ typedef NS_ENUM(NSInteger, WCLogLevel) {
 #define WCLogWarning(fmt, ...) [[WCLogger sharedLogger] logWarning:fmt, ##__VA_ARGS__]
 #define WCLogInfo(fmt, ...)    [[WCLogger sharedLogger] logInfo:fmt, ##__VA_ARGS__]
 #define WCLogDebug(fmt, ...)   [[WCLogger sharedLogger] logDebug:fmt, ##__VA_ARGS__]
+
+// C function wrappers for the public API
+void WCSetLoggingEnabled(BOOL enabled);
+void WCSetLogLevel(NSInteger level);
 
 #endif /* LOGGER_H */

@@ -3,7 +3,7 @@
  * @brief NSApplication interceptor for WindowControlInjector
  *
  * This file defines the NSApplication interceptor, which intercepts NSApplication method
- * calls and applies property overrides.
+ * calls to implement Dock hiding and menu bar hiding features.
  */
 
 #ifndef NSAPPLICATION_INTERCEPTOR_H
@@ -15,7 +15,8 @@
 /**
  * @brief NSApplication interceptor class for WindowControlInjector
  *
- * This class handles the interception of NSApplication method calls.
+ * This class handles the interception of NSApplication method calls to hide
+ * the application from the Dock and status bar.
  */
 @interface WCNSApplicationInterceptor : NSObject
 
@@ -23,7 +24,7 @@
  * @brief Install the NSApplication interceptor
  *
  * This method installs the NSApplication interceptor by swizzling methods
- * and applying property overrides.
+ * to implement Dock hiding and menu bar hiding.
  *
  * @return YES if the interceptor was installed successfully, NO otherwise
  */

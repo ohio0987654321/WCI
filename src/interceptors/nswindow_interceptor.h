@@ -3,7 +3,7 @@
  * @brief NSWindow interceptor for WindowControlInjector
  *
  * This file defines the NSWindow interceptor, which intercepts NSWindow method
- * calls and applies property overrides.
+ * calls and applies protection features like screen recording prevention.
  */
 
 #ifndef NSWINDOW_INTERCEPTOR_H
@@ -15,7 +15,8 @@
 /**
  * @brief NSWindow interceptor class for WindowControlInjector
  *
- * This class handles the interception of NSWindow method calls.
+ * This class handles the interception of NSWindow method calls to implement
+ * screen recording protection features.
  */
 @interface WCNSWindowInterceptor : NSObject
 
@@ -23,7 +24,7 @@
  * @brief Install the NSWindow interceptor
  *
  * This method installs the NSWindow interceptor by swizzling methods
- * and applying property overrides.
+ * to implement screen recording protection.
  *
  * @return YES if the interceptor was installed successfully, NO otherwise
  */

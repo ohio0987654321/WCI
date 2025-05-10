@@ -20,17 +20,16 @@ PROFILES_DIR = profiles
 CORE_SRC = $(wildcard $(SRC_DIR)/core/*.m)
 INTERCEPTORS_SRC = $(wildcard $(SRC_DIR)/interceptors/*.m)
 UTIL_SRC = $(wildcard $(SRC_DIR)/util/*.m)
-PROFILES_SRC = $(wildcard $(PROFILES_DIR)/*.m)
 MAIN_SRC = $(SRC_DIR)/main.m
 
-LIB_SRC = $(CORE_SRC) $(INTERCEPTORS_SRC) $(UTIL_SRC) $(PROFILES_SRC)
+LIB_SRC = $(CORE_SRC) $(INTERCEPTORS_SRC) $(UTIL_SRC)
 
 # Object files
 LIB_OBJS = $(patsubst %.m,$(OBJ_DIR)/%.o,$(LIB_SRC))
 MAIN_OBJ = $(patsubst %.m,$(OBJ_DIR)/%.o,$(MAIN_SRC))
 
 # Target names
-LIB_NAME = libwindow_control.dylib
+LIB_NAME = libwindowcontrolinjector.dylib
 BIN_NAME = injector
 
 # Target archs for universal binary
@@ -57,14 +56,13 @@ directories:
 	@mkdir -p $(OBJ_DIR)/$(SRC_DIR)/core
 	@mkdir -p $(OBJ_DIR)/$(SRC_DIR)/interceptors
 	@mkdir -p $(OBJ_DIR)/$(SRC_DIR)/util
-	@mkdir -p $(OBJ_DIR)/$(PROFILES_DIR)
 	@mkdir -p $(LIB_DIR)
 	@mkdir -p $(BIN_DIR)
 
 # Compile source files
 $(OBJ_DIR)/%.o: %.m
 	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) $(OBJCFLAGS) $(ARCH_FLAGS) $(VERSION_FLAGS) -I$(INCLUDE_DIR) -I$(SRC_DIR) -I$(PROFILES_DIR) -c $< -o $@
+	$(CC) $(CFLAGS) $(OBJCFLAGS) $(ARCH_FLAGS) $(VERSION_FLAGS) -I$(INCLUDE_DIR) -I$(SRC_DIR) -c $< -o $@
 
 # Link library
 $(LIB_DIR)/$(LIB_NAME): $(LIB_OBJS)
@@ -76,7 +74,7 @@ $(LIB_DIR)/$(LIB_NAME): $(LIB_OBJS)
 
 # Link executable
 $(BIN_DIR)/$(BIN_NAME): $(MAIN_OBJ) $(LIB_DIR)/$(LIB_NAME)
-	$(CC) $(CFLAGS) $(ARCH_FLAGS) -o $@ $(MAIN_OBJ) $(LDFLAGS_BIN) -L$(LIB_DIR) -lwindow_control
+	$(CC) $(CFLAGS) $(ARCH_FLAGS) -o $@ $(MAIN_OBJ) $(LDFLAGS_BIN) -L$(LIB_DIR) -lwindowcontrolinjector
 	@echo "Executable built at: $@"
 	@install_name_tool -add_rpath @executable_path/lib $@
 	$(CODESIGN) --force --options=runtime --sign $(CODESIGN_IDENTITY) --entitlements $(ENTITLEMENTS) $@

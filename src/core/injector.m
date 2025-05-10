@@ -4,22 +4,27 @@
  */
 
 #import "../../include/injector.h"
-#import "../../include/profiles.h"
 #import "../../include/window_control.h"
 #import "../util/logger.h"
-#import "profile_manager.h"
-#import "property_manager.h"
 #import "../interceptors/nswindow_interceptor.h"
 #import "../interceptors/nsapplication_interceptor.h"
+#import <dlfcn.h>
+#import <mach-o/dyld.h>
+
+// Error codes
+NSInteger const WCErrorInvalidArguments = 100;
+NSInteger const WCErrorApplicationNotFound = 101;
+NSInteger const WCErrorInjectionFailed = 102;
 
 // Static variables
 static NSString *gDylibPath = nil;
 
 @implementation WCInjector
 
-+ (BOOL)injectIntoApplication:(NSString *)applicationPath
-                 withProfiles:(NSArray<NSString *> *)profileNames
-                        error:(NSError **)error {
+/**
+ * Inject the WindowControlInjector dylib into an application
+ */
++ (BOOL)injectIntoApplication:(NSString *)applicationPath error:(NSError **)error {
     if (!applicationPath) {
         if (error) {
             *error = [NSError errorWithDomain:WCErrorDomain
@@ -61,13 +66,6 @@ static NSString *gDylibPath = nil;
     // Set DYLD_INSERT_LIBRARIES to inject the dylib
     env[@"DYLD_INSERT_LIBRARIES"] = dylibPath;
 
-    // If profiles are provided, pass them as an environment variable
-    if (profileNames && profileNames.count > 0) {
-        NSString *profilesString = [profileNames componentsJoinedByString:@","];
-        env[@"WCI_PROFILES"] = profilesString;
-        WCLogInfo(@"Injecting profiles: %@", profilesString);
-    }
-
     [task setEnvironment:env];
 
     // Set arguments to open the application with -n flag to force a new instance
@@ -88,92 +86,10 @@ static NSString *gDylibPath = nil;
     }
 }
 
-+ (BOOL)injectIntoApplication:(NSString *)applicationPath
-        withPropertyOverrides:(NSDictionary *)overrides
-                        error:(NSError **)error {
-    if (!applicationPath) {
-        if (error) {
-            *error = [NSError errorWithDomain:WCErrorDomain
-                                         code:WCErrorInvalidArguments
-                                     userInfo:@{NSLocalizedDescriptionKey: @"Application path is required"}];
-        }
-        return NO;
-    }
-
-    // Check if application exists
-    BOOL isDirectory = NO;
-    if (![[NSFileManager defaultManager] fileExistsAtPath:applicationPath isDirectory:&isDirectory] || !isDirectory) {
-        if (error) {
-            *error = [NSError errorWithDomain:WCErrorDomain
-                                         code:WCErrorApplicationNotFound
-                                     userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Application not found at path: %@", applicationPath]}];
-        }
-        return NO;
-    }
-
-    // Get dylib path
-    NSString *dylibPath = [self findDylibPath];
-    if (!dylibPath) {
-        if (error) {
-            *error = [NSError errorWithDomain:WCErrorDomain
-                                         code:WCErrorInjectionFailed
-                                     userInfo:@{NSLocalizedDescriptionKey: @"Could not find WindowControlInjector dylib"}];
-        }
-        return NO;
-    }
-
-    // Create task to launch application with injected dylib
-    NSTask *task = [NSTask new];
-    [task setLaunchPath:@"/usr/bin/open"];
-
-    // Prepare environment variables for injection
-    NSMutableDictionary *env = [NSMutableDictionary dictionaryWithDictionary:[[NSProcessInfo processInfo] environment]];
-
-    // Set DYLD_INSERT_LIBRARIES to inject the dylib
-    env[@"DYLD_INSERT_LIBRARIES"] = dylibPath;
-
-    // If overrides are provided, serialize them and pass as an environment variable
-    if (overrides && overrides.count > 0) {
-        NSError *jsonError = nil;
-        NSData *jsonData = [NSJSONSerialization dataWithJSONObject:overrides
-                                                           options:0
-                                                             error:&jsonError];
-        if (jsonError || !jsonData) {
-            if (error) {
-                *error = [NSError errorWithDomain:WCErrorDomain
-                                             code:WCErrorInvalidArguments
-                                         userInfo:@{NSLocalizedDescriptionKey: @"Failed to serialize property overrides to JSON"}];
-            }
-            return NO;
-        }
-
-        NSString *jsonString = [[NSString alloc] initWithData:jsonData encoding:NSUTF8StringEncoding];
-        env[@"WCI_OVERRIDES"] = jsonString;
-        WCLogInfo(@"Injecting property overrides: %@", jsonString);
-    }
-
-    [task setEnvironment:env];
-
-    // Set arguments to open the application with -n flag to force a new instance
-    [task setArguments:@[@"-n", @"-a", applicationPath]];
-
-    // Launch the application
-    @try {
-        [task launch];
-        WCLogInfo(@"Successfully injected dylib into application: %@", applicationPath);
-        return YES;
-    } @catch (NSException *exception) {
-        if (error) {
-            *error = [NSError errorWithDomain:WCErrorDomain
-                                         code:WCErrorInjectionFailed
-                                     userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Failed to launch application: %@", exception.reason]}];
-        }
-        return NO;
-    }
-}
-
+/**
+ * Launch an application with arguments and injected dylib
+ */
 + (NSTask *)launchApplication:(NSString *)applicationPath
-                 withProfiles:(NSArray<NSString *> *)profileNames
                     arguments:(NSArray<NSString *> *)arguments
                         error:(NSError **)error {
     if (!applicationPath) {
@@ -249,13 +165,6 @@ static NSString *gDylibPath = nil;
     // Set DYLD_INSERT_LIBRARIES to inject the dylib
     env[@"DYLD_INSERT_LIBRARIES"] = dylibPath;
 
-    // If profiles are provided, pass them as an environment variable
-    if (profileNames && profileNames.count > 0) {
-        NSString *profilesString = [profileNames componentsJoinedByString:@","];
-        env[@"WCI_PROFILES"] = profilesString;
-        WCLogInfo(@"Injecting profiles: %@", profilesString);
-    }
-
     [task setEnvironment:env];
 
     // Set arguments if provided
@@ -278,125 +187,9 @@ static NSString *gDylibPath = nil;
     }
 }
 
-+ (NSTask *)launchApplication:(NSString *)applicationPath
-        withPropertyOverrides:(NSDictionary *)overrides
-                    arguments:(NSArray<NSString *> *)arguments
-                        error:(NSError **)error {
-    if (!applicationPath) {
-        if (error) {
-            *error = [NSError errorWithDomain:WCErrorDomain
-                                         code:WCErrorInvalidArguments
-                                     userInfo:@{NSLocalizedDescriptionKey: @"Application path is required"}];
-        }
-        return nil;
-    }
-
-    // Check if application exists
-    BOOL isDirectory = NO;
-    if (![[NSFileManager defaultManager] fileExistsAtPath:applicationPath isDirectory:&isDirectory] || !isDirectory) {
-        if (error) {
-            *error = [NSError errorWithDomain:WCErrorDomain
-                                         code:WCErrorApplicationNotFound
-                                     userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Application not found at path: %@", applicationPath]}];
-        }
-        return nil;
-    }
-
-    // Get dylib path
-    NSString *dylibPath = [self findDylibPath];
-    if (!dylibPath) {
-        if (error) {
-            *error = [NSError errorWithDomain:WCErrorDomain
-                                         code:WCErrorInjectionFailed
-                                     userInfo:@{NSLocalizedDescriptionKey: @"Could not find WindowControlInjector dylib"}];
-        }
-        return nil;
-    }
-
-    // Find the executable within the application bundle
-    NSString *executablePath = nil;
-    NSBundle *appBundle = [NSBundle bundleWithPath:applicationPath];
-    if (appBundle) {
-        executablePath = [appBundle executablePath];
-    }
-
-    if (!executablePath) {
-        // Fallback method to find executable
-        NSString *contentsPath = [applicationPath stringByAppendingPathComponent:@"Contents"];
-        NSString *infoPlistPath = [contentsPath stringByAppendingPathComponent:@"Info.plist"];
-
-        if ([[NSFileManager defaultManager] fileExistsAtPath:infoPlistPath]) {
-            NSDictionary *infoPlist = [NSDictionary dictionaryWithContentsOfFile:infoPlistPath];
-            NSString *executableName = infoPlist[@"CFBundleExecutable"];
-
-            if (executableName) {
-                executablePath = [contentsPath stringByAppendingPathComponent:@"MacOS"];
-                executablePath = [executablePath stringByAppendingPathComponent:executableName];
-            }
-        }
-    }
-
-    if (!executablePath || ![[NSFileManager defaultManager] fileExistsAtPath:executablePath]) {
-        if (error) {
-            *error = [NSError errorWithDomain:WCErrorDomain
-                                         code:WCErrorApplicationNotFound
-                                     userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Could not find executable in application: %@", applicationPath]}];
-        }
-        return nil;
-    }
-
-    // Create task to launch application with injected dylib
-    NSTask *task = [NSTask new];
-    [task setLaunchPath:executablePath];
-
-    // Prepare environment variables for injection
-    NSMutableDictionary *env = [NSMutableDictionary dictionaryWithDictionary:[[NSProcessInfo processInfo] environment]];
-
-    // Set DYLD_INSERT_LIBRARIES to inject the dylib
-    env[@"DYLD_INSERT_LIBRARIES"] = dylibPath;
-
-    // If overrides are provided, serialize them and pass as an environment variable
-    if (overrides && overrides.count > 0) {
-        NSError *jsonError = nil;
-        NSData *jsonData = [NSJSONSerialization dataWithJSONObject:overrides
-                                                           options:0
-                                                             error:&jsonError];
-        if (jsonError || !jsonData) {
-            if (error) {
-                *error = [NSError errorWithDomain:WCErrorDomain
-                                             code:WCErrorInvalidArguments
-                                         userInfo:@{NSLocalizedDescriptionKey: @"Failed to serialize property overrides to JSON"}];
-            }
-            return nil;
-        }
-
-        NSString *jsonString = [[NSString alloc] initWithData:jsonData encoding:NSUTF8StringEncoding];
-        env[@"WCI_OVERRIDES"] = jsonString;
-        WCLogInfo(@"Injecting property overrides: %@", jsonString);
-    }
-
-    [task setEnvironment:env];
-
-    // Set arguments if provided
-    if (arguments && arguments.count > 0) {
-        [task setArguments:arguments];
-    }
-
-    // Launch the application
-    @try {
-        [task launch];
-        WCLogInfo(@"Successfully launched application with injected dylib: %@", applicationPath);
-        return task;
-    } @catch (NSException *exception) {
-        if (error) {
-            *error = [NSError errorWithDomain:WCErrorDomain
-                                         code:WCErrorInjectionFailed
-                                     userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Failed to launch application: %@", exception.reason]}];
-        }
-        return nil;
-    }
-}
-
+/**
+ * Find the path to the WindowControlInjector dylib
+ */
 + (NSString *)findDylibPath {
     // If a custom path was set, use that
     if (gDylibPath) {
@@ -421,9 +214,28 @@ static NSString *gDylibPath = nil;
     NSFileManager *fileManager = [NSFileManager defaultManager];
 
     for (NSString *location in searchLocations) {
-        NSString *dylibPath = [location stringByAppendingPathComponent:@"libwindow_control.dylib"];
+        NSString *dylibPath = [location stringByAppendingPathComponent:@"libwindowcontrolinjector.dylib"];
         if ([fileManager fileExistsAtPath:dylibPath]) {
             return dylibPath;
+        }
+    }
+
+    // If we can't find it in common locations, try to get the path from the loaded dylibs
+    uint32_t count = _dyld_image_count();
+    for (uint32_t i = 0; i < count; i++) {
+        const char *path = _dyld_get_image_name(i);
+        NSString *imagePath = [NSString stringWithUTF8String:path];
+        if ([imagePath containsString:@"windowcontrolinjector"]) {
+            return imagePath;
+        }
+    }
+
+    // If we're already running as the dylib, get our own path
+    Dl_info info;
+    if (dladdr((const void *)WCProtectApplication, &info)) {
+        NSString *path = [NSString stringWithUTF8String:info.dli_fname];
+        if ([path containsString:@"windowcontrolinjector"]) {
+            return path;
         }
     }
 
@@ -432,13 +244,18 @@ static NSString *gDylibPath = nil;
     return nil;
 }
 
+/**
+ * Set a custom path for the WindowControlInjector dylib
+ */
 + (void)setDylibPath:(NSString *)path {
     gDylibPath = [path copy];
 }
 
 @end
 
-// Dylib initialization function that will be called when the library is loaded
+/**
+ * Dylib initialization function that will be called when the library is loaded
+ */
 __attribute__((constructor))
 static void initialize(void) {
     // Direct filesystem logging to confirm dylib is being loaded
@@ -460,137 +277,46 @@ static void initialize(void) {
         [fileHandle closeFile];
     }
 
-    // Log environment variables to help debug
-    NSString *envLogMessage = @"Environment variables:\n";
-    NSDictionary *env = [[NSProcessInfo processInfo] environment];
-    for (NSString *key in env) {
-        envLogMessage = [envLogMessage stringByAppendingFormat:@"%@=%@\n", key, env[key]];
-    }
-
-    NSFileHandle *envFileHandle = [NSFileHandle fileHandleForWritingAtPath:logPath];
-    [envFileHandle seekToEndOfFile];
-    [envFileHandle writeData:[envLogMessage dataUsingEncoding:NSUTF8StringEncoding]];
-    [envFileHandle closeFile];
-
-    // Initialize WC and register built-in profiles
-    WCInitialize();
-
-    // Log that we're checking for profiles
-    NSFileHandle *profilesFileHandle = [NSFileHandle fileHandleForWritingAtPath:logPath];
-    [profilesFileHandle seekToEndOfFile];
-    [profilesFileHandle writeData:[@"Checking for profiles in environment variables...\n" dataUsingEncoding:NSUTF8StringEncoding]];
-
-    // Check for profiles in environment variables
-    NSString *profilesString = [[[NSProcessInfo processInfo] environment] objectForKey:@"WCI_PROFILES"];
-    if (profilesString) {
-        NSString *profileLogMessage = [NSString stringWithFormat:@"Found profiles: %@\n", profilesString];
-        [profilesFileHandle writeData:[profileLogMessage dataUsingEncoding:NSUTF8StringEncoding]];
-
-        NSArray<NSString *> *profiles = [profilesString componentsSeparatedByString:@","];
-        for (NSString *profileName in profiles) {
-            NSString *applyingMessage = [NSString stringWithFormat:@"Applying profile: %@\n", profileName];
-            [profilesFileHandle writeData:[applyingMessage dataUsingEncoding:NSUTF8StringEncoding]];
-            WCApplyProfile(profileName);
-        }
-    } else {
-        [profilesFileHandle writeData:[@"No profiles found in environment variables\n" dataUsingEncoding:NSUTF8StringEncoding]];
-    }
-    [profilesFileHandle closeFile];
-
-    // Log that we're checking for overrides
-    NSFileHandle *overridesFileHandle = [NSFileHandle fileHandleForWritingAtPath:logPath];
-    [overridesFileHandle seekToEndOfFile];
-    [overridesFileHandle writeData:[@"Checking for property overrides in environment variables...\n" dataUsingEncoding:NSUTF8StringEncoding]];
-
-    // Check for property overrides in environment variables
-    NSString *overridesString = [[[NSProcessInfo processInfo] environment] objectForKey:@"WCI_OVERRIDES"];
-    if (overridesString) {
-        NSString *overridesLogMessage = [NSString stringWithFormat:@"Found overrides: %@\n", overridesString];
-        [overridesFileHandle writeData:[overridesLogMessage dataUsingEncoding:NSUTF8StringEncoding]];
-
-        NSError *jsonError = nil;
-        NSData *jsonData = [overridesString dataUsingEncoding:NSUTF8StringEncoding];
-        NSDictionary *overrides = [NSJSONSerialization JSONObjectWithData:jsonData
-                                                                  options:0
-                                                                    error:&jsonError];
-        if (!jsonError && overrides) {
-            [overridesFileHandle writeData:[@"Successfully parsed overrides, applying them now\n" dataUsingEncoding:NSUTF8StringEncoding]];
-            [[WCPropertyManager sharedManager] applyPropertyOverrides:overrides];
-        } else {
-            NSString *errorMessage = [NSString stringWithFormat:@"Failed to parse property overrides from environment: %@\n", jsonError];
-            [overridesFileHandle writeData:[errorMessage dataUsingEncoding:NSUTF8StringEncoding]];
-            WCLogError(@"Failed to parse property overrides from environment: %@", jsonError);
-        }
-    } else {
-        [overridesFileHandle writeData:[@"No property overrides found in environment variables\n" dataUsingEncoding:NSUTF8StringEncoding]];
-    }
-    [overridesFileHandle closeFile];
-
-    // Log interceptor installation status
-    NSFileHandle *interceptorFileHandle = [NSFileHandle fileHandleForWritingAtPath:logPath];
-    [interceptorFileHandle seekToEndOfFile];
-    [interceptorFileHandle writeData:[@"Checking interceptor installation status...\n" dataUsingEncoding:NSUTF8StringEncoding]];
-
-    // Get WCInitialize return value (will show if interceptors were installed)
-    BOOL initSuccess = WCInitialize();
-
-    NSString *interceptorStatus = initSuccess ?
-        @"Interceptors successfully installed\n" :
-        @"Failed to install one or more interceptors\n";
-
-    [interceptorFileHandle writeData:[interceptorStatus dataUsingEncoding:NSUTF8StringEncoding]];
-    [interceptorFileHandle closeFile];
-
-    // Final log message
+    // Log initialization completion
     NSFileHandle *finalFileHandle = [NSFileHandle fileHandleForWritingAtPath:logPath];
     [finalFileHandle seekToEndOfFile];
-    [finalFileHandle writeData:[@"WindowControlInjector initialization completed\n" dataUsingEncoding:NSUTF8StringEncoding]];
+    [finalFileHandle writeData:[@"WindowControlInjector initialization started\n" dataUsingEncoding:NSUTF8StringEncoding]];
+    [finalFileHandle closeFile];
+
+    // Call the initialization function
+    BOOL success = WCInitialize();
+
+    // Log result
+    finalFileHandle = [NSFileHandle fileHandleForWritingAtPath:logPath];
+    [finalFileHandle seekToEndOfFile];
+    NSString *resultMessage = success ?
+        @"WindowControlInjector initialized successfully\n" :
+        @"WindowControlInjector initialization failed\n";
+    [finalFileHandle writeData:[resultMessage dataUsingEncoding:NSUTF8StringEncoding]];
     [finalFileHandle closeFile];
 }
 
-// C function wrappers for the public API
-BOOL WCInjectIntoApplication(NSString *applicationPath, NSArray<NSString *> *profileNames, NSError **error) {
-    return [WCInjector injectIntoApplication:applicationPath withProfiles:profileNames error:error];
+/**
+ * C function wrappers for backward compatibility
+ */
+BOOL WCInjectIntoApplication(NSString *applicationPath, NSError **error) {
+    return [WCInjector injectIntoApplication:applicationPath error:error];
 }
 
-BOOL WCInjectIntoApplicationWithOverrides(NSString *applicationPath, NSDictionary *overrides, NSError **error) {
-    return [WCInjector injectIntoApplication:applicationPath withPropertyOverrides:overrides error:error];
-}
-
+/**
+ * Get the version string
+ */
 NSString *WCGetVersion(void) {
-    return [NSString stringWithUTF8String:WC_VERSION_STRING];
+    return @"1.0.0";
 }
 
+/**
+ * Get the build date string
+ */
 NSString *WCGetBuildDate(void) {
 #ifdef BUILD_DATE
     return [NSString stringWithUTF8String:BUILD_DATE];
 #else
     return @"Development Build";
 #endif
-}
-
-BOOL WCInitialize(void) {
-    // Initialize the logger
-    WCSetLoggingEnabled(YES);
-    WCSetLogLevel(WCLogLevelInfo);
-
-    WCLogInfo(@"WindowControlInjector v%@ initializing...", WCGetVersion());
-
-    // Initialize profile manager with built-in profiles
-    [[WCProfileManager sharedManager] initializeWithBuiltInProfiles];
-
-    // Install interceptors - THIS WAS MISSING!
-    WCLogInfo(@"Installing interceptors...");
-    BOOL windowSuccess = [WCNSWindowInterceptor install];
-    BOOL appSuccess = [WCNSApplicationInterceptor install];
-
-    if (!windowSuccess) {
-        WCLogError(@"Failed to install NSWindow interceptor");
-    }
-
-    if (!appSuccess) {
-        WCLogError(@"Failed to install NSApplication interceptor");
-    }
-
-    return windowSuccess && appSuccess;
 }

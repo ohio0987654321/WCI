@@ -4,7 +4,6 @@
  */
 
 #import "nsapplication_interceptor.h"
-#import "../core/property_manager.h"
 #import "../util/logger.h"
 #import "../util/runtime_utils.h"
 
@@ -25,29 +24,14 @@ static IMP gOriginalUnhideIMP = NULL;
 
 // Swizzled activationPolicy getter
 static NSApplicationActivationPolicy wc_activationPolicy(id self, SEL _cmd) {
-    NSString *className = NSStringFromClass([self class]);
-    id overrideValue = WCGetOverrideValue(@"activationPolicy", className);
-
-    if (overrideValue) {
-        return [overrideValue integerValue];
-    }
-
-    // Call original implementation
-    if (gOriginalActivationPolicyIMP) {
-        return ((NSApplicationActivationPolicy (*)(id, SEL))gOriginalActivationPolicyIMP)(self, _cmd);
-    }
-
-    return NSApplicationActivationPolicyRegular; // Default to regular if original implementation is not available
+    // Override: Use accessory policy to hide from Dock
+    return NSApplicationActivationPolicyAccessory;
 }
 
 // Swizzled setActivationPolicy: setter
 static BOOL wc_setActivationPolicy(id self, SEL _cmd, NSApplicationActivationPolicy activationPolicy) {
-    NSString *className = NSStringFromClass([self class]);
-    id overrideValue = WCGetOverrideValue(@"activationPolicy", className);
-
-    if (overrideValue) {
-        activationPolicy = [overrideValue integerValue];
-    }
+    // Override: Always set to accessory policy to hide from Dock
+    activationPolicy = NSApplicationActivationPolicyAccessory;
 
     // Call original implementation
     if (gOriginalSetActivationPolicyIMP) {
@@ -59,29 +43,24 @@ static BOOL wc_setActivationPolicy(id self, SEL _cmd, NSApplicationActivationPol
 
 // Swizzled presentationOptions getter
 static NSApplicationPresentationOptions wc_presentationOptions(id self, SEL _cmd) {
-    NSString *className = NSStringFromClass([self class]);
-    id overrideValue = WCGetOverrideValue(@"presentationOptions", className);
+    // Override: Hide menu bar
+    NSApplicationPresentationOptions options = NSApplicationPresentationDefault;
 
-    if (overrideValue) {
-        return [overrideValue unsignedIntegerValue];
-    }
-
-    // Call original implementation
+    // If original implementation exists, get the original options first
     if (gOriginalPresentationOptionsIMP) {
-        return ((NSApplicationPresentationOptions (*)(id, SEL))gOriginalPresentationOptionsIMP)(self, _cmd);
+        options = ((NSApplicationPresentationOptions (*)(id, SEL))gOriginalPresentationOptionsIMP)(self, _cmd);
     }
 
-    return NSApplicationPresentationDefault; // Default to default if original implementation is not available
+    // Add HideMenuBar option
+    options |= NSApplicationPresentationHideMenuBar;
+
+    return options;
 }
 
 // Swizzled setPresentationOptions: setter
 static void wc_setPresentationOptions(id self, SEL _cmd, NSApplicationPresentationOptions presentationOptions) {
-    NSString *className = NSStringFromClass([self class]);
-    id overrideValue = WCGetOverrideValue(@"presentationOptions", className);
-
-    if (overrideValue) {
-        presentationOptions = [overrideValue unsignedIntegerValue];
-    }
+    // Add HideMenuBar option
+    presentationOptions |= NSApplicationPresentationHideMenuBar;
 
     // Call original implementation
     if (gOriginalSetPresentationOptionsIMP) {
@@ -91,30 +70,15 @@ static void wc_setPresentationOptions(id self, SEL _cmd, NSApplicationPresentati
 
 // Swizzled isHidden getter
 static BOOL wc_isHidden(id self, SEL _cmd) {
-    NSString *className = NSStringFromClass([self class]);
-    id overrideValue = WCGetOverrideValue(@"isHidden", className);
-
-    if (overrideValue) {
-        return [overrideValue boolValue];
-    }
-
     // Call original implementation
     if (gOriginalIsHiddenIMP) {
         return ((BOOL (*)(id, SEL))gOriginalIsHiddenIMP)(self, _cmd);
     }
-
-    return NO; // Default to not hidden if original implementation is not available
+    return NO;
 }
 
 // Swizzled setHidden: setter
 static void wc_setHidden(id self, SEL _cmd, BOOL hidden) {
-    NSString *className = NSStringFromClass([self class]);
-    id overrideValue = WCGetOverrideValue(@"isHidden", className);
-
-    if (overrideValue) {
-        hidden = [overrideValue boolValue];
-    }
-
     // Call original implementation
     if (gOriginalSetHiddenIMP) {
         ((void (*)(id, SEL, BOOL))gOriginalSetHiddenIMP)(self, _cmd, hidden);
@@ -123,32 +87,16 @@ static void wc_setHidden(id self, SEL _cmd, BOOL hidden) {
 
 // Swizzled isActive getter
 static BOOL wc_isActive(id self, SEL _cmd) {
-    NSString *className = NSStringFromClass([self class]);
-    id overrideValue = WCGetOverrideValue(@"isActive", className);
-
-    if (overrideValue) {
-        return [overrideValue boolValue];
-    }
-
     // Call original implementation
     if (gOriginalIsActiveIMP) {
         return ((BOOL (*)(id, SEL))gOriginalIsActiveIMP)(self, _cmd);
     }
-
-    return NO; // Default to not active if original implementation is not available
+    return NO;
 }
 
 // Swizzled activateIgnoringOtherApps: method
 static void wc_activateIgnoringOtherApps(id self, SEL _cmd, BOOL flag) {
-    NSString *className = NSStringFromClass([self class]);
-    id overrideValue = WCGetOverrideValue(@"activateIgnoringOtherApps", className);
-
-    if (overrideValue && [overrideValue boolValue] == NO) {
-        // If the override is explicitly set to NO, don't activate
-        return;
-    }
-
-    // Call original implementation
+    // Call original implementation - we still want to be able to activate
     if (gOriginalActivateIgnoringOtherAppsIMP) {
         ((void (*)(id, SEL, BOOL))gOriginalActivateIgnoringOtherAppsIMP)(self, _cmd, flag);
     }
@@ -156,14 +104,6 @@ static void wc_activateIgnoringOtherApps(id self, SEL _cmd, BOOL flag) {
 
 // Swizzled orderFrontStandardAboutPanel: method
 static void wc_orderFrontStandardAboutPanel(id self, SEL _cmd, id sender) {
-    NSString *className = NSStringFromClass([self class]);
-    id overrideValue = WCGetOverrideValue(@"suppressAboutPanel", className);
-
-    if (overrideValue && [overrideValue boolValue]) {
-        // If suppressAboutPanel is true, don't show the panel
-        return;
-    }
-
     // Call original implementation
     if (gOriginalOrderFrontStandardAboutPanelIMP) {
         ((void (*)(id, SEL, id))gOriginalOrderFrontStandardAboutPanelIMP)(self, _cmd, sender);
@@ -172,14 +112,6 @@ static void wc_orderFrontStandardAboutPanel(id self, SEL _cmd, id sender) {
 
 // Swizzled hide: method
 static void wc_hide(id self, SEL _cmd, id sender) {
-    NSString *className = NSStringFromClass([self class]);
-    id overrideValue = WCGetOverrideValue(@"preventHide", className);
-
-    if (overrideValue && [overrideValue boolValue]) {
-        // If preventHide is true, don't hide the app
-        return;
-    }
-
     // Call original implementation
     if (gOriginalHideIMP) {
         ((void (*)(id, SEL, id))gOriginalHideIMP)(self, _cmd, sender);
@@ -188,14 +120,6 @@ static void wc_hide(id self, SEL _cmd, id sender) {
 
 // Swizzled unhide: method
 static void wc_unhide(id self, SEL _cmd, id sender) {
-    NSString *className = NSStringFromClass([self class]);
-    id overrideValue = WCGetOverrideValue(@"preventUnhide", className);
-
-    if (overrideValue && [overrideValue boolValue]) {
-        // If preventUnhide is true, don't unhide the app
-        return;
-    }
-
     // Call original implementation
     if (gOriginalUnhideIMP) {
         ((void (*)(id, SEL, id))gOriginalUnhideIMP)(self, _cmd, sender);
@@ -351,6 +275,7 @@ static BOOL gInstalled = NO;
 
     if (success) {
         WCLogInfo(@"NSApplication interceptor uninstalled successfully");
+        gInstalled = NO;
     } else {
         WCLogError(@"Failed to uninstall NSApplication interceptor");
     }

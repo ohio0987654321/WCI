@@ -1,9 +1,6 @@
 /**
  * @file injector.h
- * @brief API for the WindowControlInjector injection mechanism
- *
- * This file defines the API for the injection mechanism used by WindowControlInjector.
- * It provides functions for injecting the WindowControlInjector dylib into target applications.
+ * @brief Public injection API for WindowControlInjector
  */
 
 #ifndef INJECTOR_H
@@ -11,86 +8,113 @@
 
 #import <Foundation/Foundation.h>
 
+// Re-export the core protector API for backward compatibility
+#import "../src/core/protector.h"
+
 /**
- * @brief WCInjector class for injecting into applications
+ * @brief Main injector class for WindowControlInjector
  *
- * This class provides methods for injecting the WindowControlInjector dylib into target applications.
+ * This class handles the injection of the WindowControlInjector dylib
+ * into target applications.
  */
 @interface WCInjector : NSObject
 
 /**
- * @brief Inject into an application with the specified profiles
+ * @brief Inject the WindowControlInjector dylib into an application
  *
- * @param applicationPath The path to the application to inject into
- * @param profileNames An array of profile names to apply
- * @param error On return, if an error occurred, a pointer to an NSError object describing the error
- * @return YES if injection was successful, NO otherwise
+ * This method injects the WindowControlInjector dylib into the specified
+ * application using DYLD_INSERT_LIBRARIES.
+ *
+ * @param applicationPath Path to the application to inject into
+ * @param error Error object to return error information
+ * @return YES if the injection was successful, NO otherwise
  */
 + (BOOL)injectIntoApplication:(NSString *)applicationPath
-                 withProfiles:(NSArray<NSString *> *)profileNames
                         error:(NSError **)error;
 
 /**
- * @brief Inject into an application with custom property overrides
+ * @brief Launch an application with arguments and injected dylib
  *
- * @param applicationPath The path to the application to inject into
- * @param overrides A dictionary of property overrides, keyed by class name, with values being dictionaries of property names to values
- * @param error On return, if an error occurred, a pointer to an NSError object describing the error
- * @return YES if injection was successful, NO otherwise
- */
-+ (BOOL)injectIntoApplication:(NSString *)applicationPath
-        withPropertyOverrides:(NSDictionary *)overrides
-                        error:(NSError **)error;
-
-/**
- * @brief Launch an application with the WindowControlInjector dylib injected
+ * This method launches the application with the specified arguments and
+ * injects the WindowControlInjector dylib.
  *
- * @param applicationPath The path to the application to launch
- * @param profileNames An array of profile names to apply
- * @param arguments An array of arguments to pass to the application
- * @param error On return, if an error occurred, a pointer to an NSError object describing the error
- * @return The NSTask object representing the launched application, or nil if launch failed
+ * @param applicationPath Path to the application to launch
+ * @param arguments Arguments to pass to the application
+ * @param error Error object to return error information
+ * @return NSTask instance for the launched application, or nil if launch failed
  */
 + (NSTask *)launchApplication:(NSString *)applicationPath
-                 withProfiles:(NSArray<NSString *> *)profileNames
-                    arguments:(NSArray<NSString *> *)arguments
-                        error:(NSError **)error;
-
-/**
- * @brief Launch an application with the WindowControlInjector dylib injected and custom property overrides
- *
- * @param applicationPath The path to the application to launch
- * @param overrides A dictionary of property overrides, keyed by class name, with values being dictionaries of property names to values
- * @param arguments An array of arguments to pass to the application
- * @param error On return, if an error occurred, a pointer to an NSError object describing the error
- * @return The NSTask object representing the launched application, or nil if launch failed
- */
-+ (NSTask *)launchApplication:(NSString *)applicationPath
-        withPropertyOverrides:(NSDictionary *)overrides
                     arguments:(NSArray<NSString *> *)arguments
                         error:(NSError **)error;
 
 /**
  * @brief Find the path to the WindowControlInjector dylib
  *
- * This method attempts to find the path to the WindowControlInjector dylib, looking in:
- * 1. The same directory as the current executable
- * 2. ~/Library/Application Support/WindowControlInjector/
- * 3. /Library/Application Support/WindowControlInjector/
+ * This method searches for the WindowControlInjector dylib in standard
+ * locations and returns the path if found.
  *
- * @return The path to the dylib, or nil if not found
+ * @return Path to the WindowControlInjector dylib, or nil if not found
  */
 + (NSString *)findDylibPath;
 
 /**
- * @brief Set the path to the WindowControlInjector dylib
+ * @brief Set a custom path for the WindowControlInjector dylib
  *
- * This method allows setting a custom path to the WindowControlInjector dylib.
+ * This method sets a custom path for the WindowControlInjector dylib
+ * to be used instead of searching for it.
  *
- * @param path The path to the dylib
+ * @param path Custom path to the WindowControlInjector dylib
  */
 + (void)setDylibPath:(NSString *)path;
 
 @end
+
+// Public C function API for backward compatibility
+
+/**
+ * @brief Inject the WindowControlInjector dylib into an application
+ *
+ * C function wrapper for [WCInjector injectIntoApplication:error:]
+ *
+ * @param applicationPath Path to the application to inject into
+ * @param error Error object to return error information
+ * @return YES if the injection was successful, NO otherwise
+ */
+BOOL WCInjectIntoApplication(NSString *applicationPath, NSError **error);
+
+/**
+ * @brief Initialize the WindowControlInjector
+ *
+ * This function is called when the dylib is loaded to initialize the
+ * interceptors.
+ *
+ * @return YES if initialization was successful, NO otherwise
+ */
+BOOL WCInitialize(void);
+
+/**
+ * @brief Protect an application from screen recording
+ *
+ * Legacy function for backward compatibility.
+ *
+ * @param applicationPath Path to the application to protect
+ * @param error Error object to return error information
+ * @return YES if protection was successful, NO otherwise
+ */
+BOOL WCProtectApplication(NSString *applicationPath, NSError **error);
+
+/**
+ * @brief Get the version string of WindowControlInjector
+ *
+ * @return Version string
+ */
+NSString *WCGetVersion(void);
+
+/**
+ * @brief Get the build date string of WindowControlInjector
+ *
+ * @return Build date string
+ */
+NSString *WCGetBuildDate(void);
 
 #endif /* INJECTOR_H */

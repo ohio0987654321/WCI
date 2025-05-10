@@ -2,128 +2,127 @@
  * @file window_control.h
  * @brief Main public API for WindowControlInjector
  *
- * This file defines the main public API for WindowControlInjector, a macOS utility
- * that uses dylib injection to modify the behavior and appearance of target applications.
+ * This file defines the main public API for WindowControlInjector,
+ * providing direct window control capabilities and the ability to
+ * modify window and application behaviors.
  */
 
 #ifndef WINDOW_CONTROL_H
 #define WINDOW_CONTROL_H
 
 #import <Foundation/Foundation.h>
+#import <AppKit/AppKit.h>
+
+// Import the core components
+#import "../src/core/protector.h"
+#import "../src/util/logger.h"
+#import "profiles.h"
+#import "injector.h"
+
+/**
+ * @brief Main class for controlling window properties and behaviors
+ *
+ * This class provides methods for directly controlling window properties
+ * and behaviors, as well as applying profiles for common use cases.
+ */
+@interface WCWindowControl : NSObject
+
+/**
+ * @brief Get the shared window control instance
+ *
+ * @return Shared instance of WCWindowControl
+ */
++ (instancetype)sharedControl;
+
+/**
+ * @brief Make a window invisible to screen recording
+ *
+ * This method modifies the window's sharing type to make it invisible
+ * to screen recording tools and screenshot applications.
+ *
+ * @param window Window to protect
+ * @return YES if successful, NO otherwise
+ */
+- (BOOL)makeWindowInvisibleToScreenRecording:(NSWindow *)window;
+
+/**
+ * @brief Make a window click-through (ignores mouse events)
+ *
+ * This method modifies the window to ignore mouse events, allowing clicks
+ * to pass through to windows behind it.
+ *
+ * @param window Window to modify
+ * @param clickThrough YES to make the window click-through, NO to restore normal behavior
+ * @return YES if successful, NO otherwise
+ */
+- (BOOL)setWindow:(NSWindow *)window clickThrough:(BOOL)clickThrough;
+
+/**
+ * @brief Prevent a window from receiving keyboard focus
+ *
+ * This method modifies the window to prevent it from receiving keyboard focus,
+ * making it non-interactable with the keyboard.
+ *
+ * @param window Window to modify
+ * @param unfocusable YES to make the window unfocusable, NO to restore normal behavior
+ * @return YES if successful, NO otherwise
+ */
+- (BOOL)setWindow:(NSWindow *)window unfocusable:(BOOL)unfocusable;
+
+/**
+ * @brief Set the alpha value of a window
+ *
+ * This method sets the alpha (transparency) value of the window.
+ *
+ * @param window Window to modify
+ * @param alphaValue Alpha value from 0.0 (fully transparent) to 1.0 (fully opaque)
+ * @return YES if successful, NO otherwise
+ */
+- (BOOL)setWindow:(NSWindow *)window alpha:(CGFloat)alphaValue;
+
+/**
+ * @brief Hide an application from the Dock
+ *
+ * This method modifies the application to be hidden from the Dock.
+ *
+ * @param application Application to modify
+ * @return YES if successful, NO otherwise
+ */
+- (BOOL)hideApplicationFromDock:(NSApplication *)application;
+
+/**
+ * @brief Hide an application from the status bar
+ *
+ * This method modifies the application to be hidden from the status bar.
+ *
+ * @param application Application to modify
+ * @return YES if successful, NO otherwise
+ */
+- (BOOL)hideApplicationFromStatusBar:(NSApplication *)application;
+
+/**
+ * @brief Set the log level for WindowControlInjector
+ *
+ * This method sets the logging verbosity for the library.
+ *
+ * @param level Log level to set
+ */
+- (void)setLogLevel:(WCLogLevel)level;
+
+/**
+ * @brief Get the current log level
+ *
+ * @return Current log level
+ */
+- (WCLogLevel)logLevel;
+
+@end
+
+// Re-export the public API functions for backward compatibility
+#define WCSetLogLevel(level) [[WCWindowControl sharedControl] setLogLevel:level]
 
 // Version information
-#define WC_VERSION_MAJOR 1
-#define WC_VERSION_MINOR 0
-#define WC_VERSION_PATCH 0
-#define WC_VERSION_STRING "1.0.0"
-
-// Error domain
-extern NSErrorDomain const WCErrorDomain;
-
-// Error codes
-typedef NS_ENUM(NSInteger, WCErrorCode) {
-    WCErrorApplicationNotFound = 1000,
-    WCErrorInjectionFailed,
-    WCErrorProfileNotFound,
-    WCErrorInvalidPropertyValue,
-    WCErrorUnknownProperty,
-    WCErrorInvalidArguments
-};
-
-// Forward declarations
-@protocol WCProfile;
-@class WCInjector;
-@class WCPropertyManager;
-
-/**
- * @brief Initialize the WindowControlInjector library.
- *
- * This function must be called before using any other WindowControlInjector functions.
- * It is automatically called when the library is loaded via DYLD_INSERT_LIBRARIES.
- *
- * @return YES if initialization was successful, NO otherwise.
- */
-BOOL WCInitialize(void);
-
-/**
- * @brief Get the version of the WindowControlInjector library.
- *
- * @return An NSString containing the version number.
- */
-NSString *WCGetVersion(void);
-
-/**
- * @brief Get the build date of the WindowControlInjector library.
- *
- * @return An NSString containing the build date.
- */
-NSString *WCGetBuildDate(void);
-
-/**
- * @brief Inject into an application with the specified profiles.
- *
- * @param applicationPath The path to the application to inject into.
- * @param profileNames An array of profile names to apply.
- * @param error On return, if an error occurred, a pointer to an NSError object describing the error.
- * @return YES if injection was successful, NO otherwise.
- */
-BOOL WCInjectIntoApplication(NSString *applicationPath, NSArray<NSString *> *profileNames, NSError **error);
-
-/**
- * @brief Inject into an application with custom property overrides.
- *
- * @param applicationPath The path to the application to inject into.
- * @param overrides A dictionary of property overrides, keyed by class name, with values being dictionaries of property names to values.
- * @param error On return, if an error occurred, a pointer to an NSError object describing the error.
- * @return YES if injection was successful, NO otherwise.
- */
-BOOL WCInjectIntoApplicationWithOverrides(NSString *applicationPath, NSDictionary *overrides, NSError **error);
-
-/**
- * @brief Apply a profile to the current application.
- *
- * This function is used internally by the injected library to apply a profile to the
- * current application. It should not be called directly by client code.
- *
- * @param profileName The name of the profile to apply.
- * @return YES if the profile was applied successfully, NO otherwise.
- */
-BOOL WCApplyProfile(NSString *profileName);
-
-/**
- * @brief Override a property value for a class.
- *
- * This function is used internally by the injected library to override property values.
- * It should not be called directly by client code.
- *
- * @param value The value to override the property with.
- * @param propertyName The name of the property to override.
- * @param className The name of the class the property belongs to.
- * @return YES if the override was set successfully, NO otherwise.
- */
-BOOL WCSetOverrideValue(id value, NSString *propertyName, NSString *className);
-
-/**
- * @brief Get the current override value for a property on a class.
- *
- * @param propertyName The name of the property.
- * @param className The name of the class the property belongs to.
- * @return The override value, or nil if no override is set.
- */
-id WCGetOverrideValue(NSString *propertyName, NSString *className);
-
-/**
- * @brief Enable logging for the WindowControlInjector library.
- *
- * @param enabled YES to enable logging, NO to disable.
- */
-void WCSetLoggingEnabled(BOOL enabled);
-
-/**
- * @brief Set the log level for the WindowControlInjector library.
- *
- * @param level The log level to set (0 = none, 1 = error, 2 = warning, 3 = info, 4 = debug).
- */
-void WCSetLogLevel(NSInteger level);
+NSString *WCGetVersionString(void);
+NSString *WCGetBuildDateString(void);
 
 #endif /* WINDOW_CONTROL_H */
