@@ -17,8 +17,6 @@ Options:
   --core             Core functionality (screen recording protection, dock/status bar hiding) [DEFAULT]
   --invisible        Make windows invisible to screen recording
   --stealth          Hide application from Dock and status bar
-  --unfocusable      Prevent windows from receiving focus
-  --click-through    Make windows click-through (ignore mouse events)
   --direct-control   Enhanced control using direct Objective-C messaging
   --all              Apply all profiles
 
@@ -42,8 +40,8 @@ Window interaction control:
 # Make TextEdit invisible to screen recording only
 ./build/injector --invisible /Applications/TextEdit.app
 
-# Hide Calculator from the Dock and make it unfocusable
-./build/injector --stealth --unfocusable /Applications/Calculator.app
+# Hide Calculator from the Dock
+./build/injector --stealth /Applications/Calculator.app
 
 # Use the core profile explicitly
 ./build/injector --core /Applications/Safari.app
@@ -74,12 +72,6 @@ For advanced use cases, additional profiles are available:
 - Hides application from Dock with `NSApplicationActivationPolicyAccessory`
 - Hides menu bar with presentation options
 
-#### Unfocusable Profile
-- Prevents windows from receiving keyboard focus
-- Useful when you don't need to interact with the application
-
-#### Click-Through Profile
-- Makes windows click-through by setting `ignoresMouseEvents` to `YES`
 
 #### Direct Control Profile
 - Advanced window control using direct Objective-C messaging

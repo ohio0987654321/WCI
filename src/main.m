@@ -53,10 +53,7 @@ int main(int argc, const char * argv[]) {
                     [profileNames addObject:@"invisible"];
                 } else if ([arg isEqualToString:@"--stealth"]) {
                     [profileNames addObject:@"stealth"];
-                } else if ([arg isEqualToString:@"--unfocusable"]) {
-                    [profileNames addObject:@"unfocusable"];
-                } else if ([arg isEqualToString:@"--click-through"]) {
-                    [profileNames addObject:@"click-through"];
+                // Removed unfocusable and click-through options
                 } else if ([arg isEqualToString:@"--direct-control"]) {
                     [profileNames addObject:@"direct-control"];
                 } else if ([arg isEqualToString:@"--core"]) {
@@ -110,7 +107,7 @@ int main(int argc, const char * argv[]) {
         // If --all is specified, add all default profiles
         if (applyAll) {
             [profileNames removeAllObjects]; // Clear any individually specified profiles
-            [profileNames addObjectsFromArray:@[@"invisible", @"stealth", @"unfocusable", @"click-through"]];
+            [profileNames addObjectsFromArray:@[@"invisible", @"stealth"]];
         }
         // If no profiles specified, use core profile
         else if (profileNames.count == 0) {
@@ -158,8 +155,7 @@ void printUsage(void) {
     printf("  --core             Core functionality (screen recording protection, dock/status bar hiding) [DEFAULT]\n");
     printf("  --invisible        Make windows invisible to screen recording\n");
     printf("  --stealth          Hide application from Dock and status bar\n");
-    printf("  --unfocusable      Prevent windows from receiving focus\n");
-    printf("  --click-through    Make windows click-through (ignore mouse events)\n");
+    // Removed unfocusable and click-through options from help text
     printf("  --direct-control   Enhanced control using direct Objective-C messaging\n");
     printf("  --all              Apply all profiles\n\n");
 
@@ -175,7 +171,7 @@ void printUsage(void) {
     printf("Examples:\n");
     printf("  ./build/injector /Applications/TextEdit.app               # Uses core profile (default)\n");
     printf("  ./build/injector --invisible /Applications/TextEdit.app   # Apply only invisibility\n");
-    printf("  ./build/injector --stealth --unfocusable /Applications/Calculator.app\n");
+    printf("  ./build/injector --stealth /Applications/Calculator.app\n");
     printf("  ./build/injector --direct-control --enable-interaction /Applications/Safari.app  # Advanced protection\n");
     printf("  ./build/injector --core /Applications/Terminal.app        # Explicit core profile\n");
 }
