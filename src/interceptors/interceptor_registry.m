@@ -6,6 +6,8 @@
 #import "interceptor_registry.h"
 #import "../util/logger.h"
 #import "../util/error_manager.h"
+#import "nswindow_interceptor.h"
+#import "nsapplication_interceptor.h"
 
 @interface WCInterceptorRegistry ()
 
@@ -590,6 +592,68 @@
 
         return NSOrderedSame;
     }];
+}
+
+/**
+ * Register all available interceptors
+ */
+- (BOOL)registerAllInterceptors {
+    [[WCLogger sharedLogger] logWithLevel:WCLogLevelInfo
+                                 category:@"Interception"
+                                     file:__FILE__
+                                     line:__LINE__
+                                 function:__PRETTY_FUNCTION__
+                                   format:@"Registering all known interceptors"];
+
+    BOOL success = YES;
+
+    // Register NSWindow interceptor
+    if (![self registerInterceptor:[WCNSWindowInterceptor class]]) {
+        success = NO;
+        [[WCLogger sharedLogger] logWithLevel:WCLogLevelError
+                                     category:@"Interception"
+                                         file:__FILE__
+                                         line:__LINE__
+                                     function:__PRETTY_FUNCTION__
+                                       format:@"Failed to register NSWindow interceptor"];
+    } else {
+        // Map to the window option
+        [self mapInterceptor:[WCNSWindowInterceptor class] toOption:WCInterceptorOptionWindow];
+    }
+
+    // Register NSApplication interceptor
+    if (![self registerInterceptor:[WCNSApplicationInterceptor class]]) {
+        success = NO;
+        [[WCLogger sharedLogger] logWithLevel:WCLogLevelError
+                                     category:@"Interception"
+                                         file:__FILE__
+                                         line:__LINE__
+                                     function:__PRETTY_FUNCTION__
+                                       format:@"Failed to register NSApplication interceptor"];
+    } else {
+        // Map to the application option
+        [self mapInterceptor:[WCNSApplicationInterceptor class] toOption:WCInterceptorOptionApplication];
+    }
+
+    // Add any additional interceptors here
+
+    if (success) {
+        [[WCLogger sharedLogger] logWithLevel:WCLogLevelInfo
+                                     category:@"Interception"
+                                         file:__FILE__
+                                         line:__LINE__
+                                     function:__PRETTY_FUNCTION__
+                                       format:@"Successfully registered all interceptors"];
+    } else {
+        [[WCLogger sharedLogger] logWithLevel:WCLogLevelWarning
+                                     category:@"Interception"
+                                         file:__FILE__
+                                         line:__LINE__
+                                     function:__PRETTY_FUNCTION__
+                                       format:@"Some interceptors failed to register"];
+    }
+
+    return success;
 }
 
 // Sort interceptors for installation, considering dependencies and priority

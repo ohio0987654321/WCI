@@ -138,6 +138,17 @@ typedef NS_OPTIONS(NSUInteger, WCInterceptorOptions) {
  */
 - (void)mapInterceptor:(Class<WCInterceptor>)interceptorClass toOption:(WCInterceptorOptions)option;
 
+/**
+ * @brief Register all available interceptors
+ *
+ * This method registers all known interceptors with the registry.
+ * It does not install them; to install registered interceptors,
+ * call installAllInterceptors.
+ *
+ * @return YES if all interceptors were registered successfully, NO otherwise
+ */
+- (BOOL)registerAllInterceptors;
+
 @end
 
 #endif /* INTERCEPTOR_REGISTRY_H */

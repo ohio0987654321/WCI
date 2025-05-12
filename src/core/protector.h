@@ -61,6 +61,6 @@ extern NSString *const WCProtectorErrorDomain;
 // C function wrappers for the public API
 BOOL WCProtectApplication(NSString *applicationPath, NSError **error);
 BOOL WCProtectApplicationWithProperties(NSString *applicationPath, NSDictionary *properties, NSError **error);
-BOOL WCInitialize(void);
+BOOL WCProtectorInitialize(void); // Renamed to avoid duplicate symbol with injector.m
 
 #endif /* PROTECTOR_H */

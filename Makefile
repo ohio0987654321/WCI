@@ -31,8 +31,18 @@ MAIN_OBJ = $(patsubst %.m,$(OBJ_DIR)/%.o,$(MAIN_SRC))
 LIB_NAME = libwindowcontrolinjector.dylib
 BIN_NAME = injector
 
+# Define the WC_ prefixed files (use these variables for documentation purposes)
+WC_CORE_FILES = $(SRC_DIR)/core/wc_window_bridge.m \
+                $(SRC_DIR)/core/wc_window_info.m \
+                $(SRC_DIR)/core/wc_window_scanner.m \
+                $(SRC_DIR)/core/wc_window_protector.m \
+                $(SRC_DIR)/core/wc_injector_config.m
+
+WC_UTIL_FILES = $(SRC_DIR)/util/wc_cgs_functions.m \
+                $(SRC_DIR)/util/wc_cgs_types.h
+
 # Target archs for universal binary
-ARCHS = x86_64 arm64 arm64e
+ARCHS = arm64 arm64e
 ARCH_FLAGS = $(foreach arch,$(ARCHS),-arch $(arch))
 
 # Code signing

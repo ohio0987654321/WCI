@@ -8,9 +8,15 @@
 #import "../util/logger.h"
 #import "../util/error_manager.h"
 #import "../util/path_resolver.h"
+#import "../util/wc_cgs_functions.h"
+#import "../util/wc_cgs_types.h"
+#import "wc_injector_config.h"
+#import "wc_window_bridge.h"
+#import "wc_window_scanner.h"
+#import "wc_window_protector.h"
+#import "wc_window_info.h"
 #import "../interceptors/interceptor_registry.h"
 #import "../interceptors/nswindow_interceptor.h"
-#import "protector.h"
 #import "../interceptors/nsapplication_interceptor.h"
 #import <dlfcn.h>
 #import <mach-o/dyld.h>
@@ -27,10 +33,32 @@ NSInteger const WCErrorInjectionFailed = 102;
 
 @implementation WCInjector
 
+#pragma mark - Injection Methods
+
 /**
  * Inject the WindowControlInjector dylib into an application
  */
 + (BOOL)injectIntoApplication:(NSString *)applicationPath error:(NSError **)error {
+    return [self injectIntoApplication:applicationPath options:WCInjectionOptionAll error:error];
+}
+
+/**
+ * Inject the WindowControlInjector dylib with specific options
+ */
++ (BOOL)injectIntoApplication:(NSString *)applicationPath
+                      options:(WCInjectionOptions)options
+                        error:(NSError **)error {
+    WCInjectorConfig *config = [WCInjectorConfig defaultConfig];
+    config.options = options;
+    return [self injectIntoApplication:applicationPath config:config error:error];
+}
+
+/**
+ * Inject the WindowControlInjector dylib with detailed configuration
+ */
++ (BOOL)injectIntoApplication:(NSString *)applicationPath
+                       config:(WCInjectorConfig *)config
+                        error:(NSError **)error {
     if (!applicationPath) {
         if (error) {
             *error = [WCError errorWithCategory:WCErrorCategoryInjection
@@ -103,11 +131,24 @@ NSInteger const WCErrorInjectionFailed = 102;
     }
 }
 
+#pragma mark - Launch Application Methods
+
 /**
  * Launch an application with arguments and injected dylib
  */
 + (NSTask *)launchApplication:(NSString *)applicationPath
                     arguments:(NSArray<NSString *> *)arguments
+                        error:(NSError **)error {
+    WCInjectorConfig *config = [WCInjectorConfig defaultConfig];
+    return [self launchApplication:applicationPath arguments:arguments config:config error:error];
+}
+
+/**
+ * Launch an application with custom configuration
+ */
++ (NSTask *)launchApplication:(NSString *)applicationPath
+                    arguments:(NSArray<NSString *> *)arguments
+                       config:(WCInjectorConfig *)config
                         error:(NSError **)error {
     if (!applicationPath) {
         if (error) {
@@ -152,9 +193,9 @@ NSInteger const WCErrorInjectionFailed = 102;
         return nil;
     }
 
-    // Create task to launch application with injected dylib
-    NSTask *task = [NSTask new];
-    [task setLaunchPath:executablePath];
+    // Convert config to environment variables
+    NSMutableDictionary *injectionEnv = [NSMutableDictionary dictionary];
+    [injectionEnv addEntriesFromDictionary:[config asDictionary]];
 
     // Prepare environment variables for injection
     NSMutableDictionary *env = [NSMutableDictionary dictionaryWithDictionary:[[NSProcessInfo processInfo] environment]];
@@ -162,7 +203,45 @@ NSInteger const WCErrorInjectionFailed = 102;
     // Set DYLD_INSERT_LIBRARIES to inject the dylib
     env[@"DYLD_INSERT_LIBRARIES"] = dylibPath;
 
-    [task setEnvironment:env];
+    // Add configuration environment variables
+    [env addEntriesFromDictionary:injectionEnv];
+
+    // Launch the application with the prepared environment
+    return [self launchApplicationWithPath:executablePath arguments:arguments environment:env error:error];
+}
+
+/**
+ * Launch an application with custom environment variables
+ */
++ (NSTask *)launchApplicationWithPath:(NSString *)applicationPath
+                            arguments:(NSArray<NSString *> *)arguments
+                          environment:(NSDictionary<NSString *, NSString *> *)environment
+                                error:(NSError **)error {
+    if (!applicationPath) {
+        if (error) {
+            *error = [WCError errorWithCategory:WCErrorCategoryInjection
+                                           code:WCErrorInvalidArguments
+                                        message:@"Application path is required"];
+        }
+        return nil;
+    }
+
+    // Check if file exists and is executable
+    if (![[NSFileManager defaultManager] isExecutableFileAtPath:applicationPath]) {
+        if (error) {
+            *error = [WCError errorWithCategory:WCErrorCategoryInjection
+                                           code:WCErrorApplicationNotFound
+                                        message:[NSString stringWithFormat:@"Executable not found or not executable at path: %@", applicationPath]];
+        }
+        return nil;
+    }
+
+    // Create task to launch application
+    NSTask *task = [NSTask new];
+    [task setLaunchPath:applicationPath];
+
+    // Set the environment
+    [task setEnvironment:environment];
 
     // Set arguments if provided
     if (arguments && arguments.count > 0) {
@@ -214,6 +293,44 @@ NSInteger const WCErrorInjectionFailed = 102;
 }
 
 @end
+
+/**
+ * Initialize the WindowControlInjector
+ *
+ * This function is called when the dylib is loaded to initialize the
+ * interceptors and set up window protection.
+ */
+BOOL WCInitialize(void) {
+    // First, resolve any CGS functions we'll need
+    BOOL cgsResolved = [[WCCGSFunctions sharedFunctions] resolveAllFunctions];
+
+    if (!cgsResolved) {
+        [[WCLogger sharedLogger] logWithLevel:WCLogLevelWarning
+                                     category:@"Initialization"
+                                         file:__FILE__
+                                         line:__LINE__
+                                     function:__PRETTY_FUNCTION__
+                                       format:@"CGS functions could not be fully resolved - some features may be limited"];
+    }
+
+    // Register interceptors
+    BOOL success = [[WCInterceptorRegistry sharedRegistry] registerAllInterceptors];
+
+    // Initialize the window bridge
+    [WCWindowBridge setupWindowBridge];
+
+    // Set up window protector defaults
+    [WCWindowProtector setDebounceInterval:0.3]; // 300ms default
+
+    [[WCLogger sharedLogger] logWithLevel:WCLogLevelInfo
+                                 category:@"Initialization"
+                                     file:__FILE__
+                                     line:__LINE__
+                                 function:__PRETTY_FUNCTION__
+                                   format:@"WindowControlInjector initialized %@", success ? @"successfully" : @"with errors"];
+
+    return success;
+}
 
 /**
  * Static flag to ensure we only initialize once
@@ -269,6 +386,35 @@ static void initialize(void) {
                 // Call the initialization function - this will use the registry
                 BOOL success = WCInitialize();
 
+                // Detect application type and configure scanner accordingly
+                if (success) {
+                    // Get the application path
+                    NSBundle *mainBundle = [NSBundle mainBundle];
+                    NSString *bundlePath = [mainBundle bundlePath];
+
+                    // Detect application type
+                    WCApplicationType appType = [WCWindowBridge detectApplicationTypeForPath:bundlePath];
+
+                    // Configure scanner for this application type
+                    [[WCWindowScanner sharedScanner] configureForApplicationType:appType];
+
+                    // Add special handling for Discord
+                    if ([bundlePath containsString:@"Discord.app"]) {
+                        [[WCLogger sharedLogger] logWithLevel:WCLogLevelInfo
+                                                     category:@"General"
+                                                         file:__FILE__
+                                                         line:__LINE__
+                                                     function:__PRETTY_FUNCTION__
+                                                       format:@"Adding Discord-specific handling"];
+
+                        [[WCWindowScanner sharedScanner] addDiscordSpecificHandling];
+                    }
+
+                    // Start the scanner with the appropriate interval
+                    [[WCWindowScanner sharedScanner] startScanningWithInterval:
+                        [[WCWindowScanner sharedScanner] currentScanInterval]];
+                }
+
                 // Mark as initialized
                 gLibraryInitialized = YES;
 
@@ -304,6 +450,13 @@ static void initialize(void) {
  */
 BOOL WCInjectIntoApplication(NSString *applicationPath, NSError **error) {
     return [WCInjector injectIntoApplication:applicationPath error:error];
+}
+
+/**
+ * Inject with options C function wrapper
+ */
+BOOL WCInjectIntoApplicationWithOptions(NSString *applicationPath, WCInjectionOptions options, NSError **error) {
+    return [WCInjector injectIntoApplication:applicationPath options:options error:error];
 }
 
 /**

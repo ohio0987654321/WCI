@@ -97,7 +97,7 @@ int main(int argc, const char * argv[]) {
 
         // Initialize the WindowControlInjector
         printf("[WindowControlInjector] Initializing WindowControlInjector...\n");
-        if (!WCInitialize()) {
+        if (!WCProtectorInitialize()) {
             printf("[WindowControlInjector] ERROR: Failed to initialize WindowControlInjector\n");
             [[WCLogger sharedLogger] logWithLevel:WCLogLevelError
                                          category:@"General"

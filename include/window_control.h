@@ -4,7 +4,8 @@
  *
  * This file defines the main public API for WindowControlInjector,
  * providing direct window control capabilities and the ability to
- * modify window and application behaviors.
+ * modify window and application behaviors through a unified interface
+ * that works with both AppKit and non-AppKit applications.
  */
 
 #ifndef WINDOW_CONTROL_H
@@ -14,8 +15,12 @@
 #import <AppKit/AppKit.h>
 
 // Import the core components
-#import "../src/core/protector.h"
-#import "../src/util/logger.h"  // Using enhanced logger instead of old logger
+#import "../src/core/wc_window_protector.h"
+#import "../src/core/wc_window_bridge.h"
+#import "../src/core/wc_window_scanner.h"
+#import "../src/core/wc_window_info.h"
+#import "../src/util/logger.h"
+#import "../src/util/wc_cgs_types.h"
 #import "injector.h"
 
 /**

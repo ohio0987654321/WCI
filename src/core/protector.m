@@ -614,6 +614,7 @@ BOOL WCProtectApplicationWithProperties(NSString *applicationPath, NSDictionary 
     return [WCProtector protectApplicationWithProperties:applicationPath withProperties:properties error:error];
 }
 
-BOOL WCInitialize(void) {
+// Renamed to avoid duplicate symbol with injector.m
+BOOL WCProtectorInitialize(void) {
     return [WCProtector initialize];
 }
