@@ -88,19 +88,22 @@
  * @brief Set application-specific scanning behavior
  *
  * This configures the scanner with special handling for specific application types
- * like Electron apps (Discord) or Chrome.
+ * like Electron apps or Chrome.
  *
  * @param appType The type of application being protected
  */
 - (void)configureForApplicationType:(WCApplicationType)appType;
 
 /**
- * @brief Add special handling for Discord windows
+ * @brief Enable advanced multi-process window handling
  *
- * Discord uses a multi-window, multi-process architecture that requires special treatment.
- * This method enables optimizations specific to Discord.
+ * Some applications use complex multi-window, multi-process architectures that require special treatment.
+ * This method enables optimizations for applications like Electron apps (VS Code, Slack, etc.) and
+ * browsers with multi-process architecture (Chrome, etc.).
+ *
+ * @param options Optional dictionary with application-specific settings
  */
-- (void)addDiscordSpecificHandling;
+- (void)enableAdvancedMultiProcessHandling:(NSDictionary *)options;
 
 @end
 

@@ -398,18 +398,6 @@ static void initialize(void) {
                     // Configure scanner for this application type
                     [[WCWindowScanner sharedScanner] configureForApplicationType:appType];
 
-                    // Add special handling for Discord
-                    if ([bundlePath containsString:@"Discord.app"]) {
-                        [[WCLogger sharedLogger] logWithLevel:WCLogLevelInfo
-                                                     category:@"General"
-                                                         file:__FILE__
-                                                         line:__LINE__
-                                                     function:__PRETTY_FUNCTION__
-                                                       format:@"Adding Discord-specific handling"];
-
-                        [[WCWindowScanner sharedScanner] addDiscordSpecificHandling];
-                    }
-
                     // Start the scanner with the appropriate interval
                     [[WCWindowScanner sharedScanner] startScanningWithInterval:
                         [[WCWindowScanner sharedScanner] currentScanInterval]];

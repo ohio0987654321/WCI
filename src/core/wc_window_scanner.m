@@ -25,7 +25,6 @@
     WCApplicationType _appType;
     NSArray<WCWindowInfo *> *_knownWindows;
     BOOL _isElectronApp;
-    BOOL _isDiscordApp;
     BOOL _isChromeApp;
 
     // Window tracking
@@ -63,7 +62,6 @@
         _appType = WCApplicationTypeUnknown;
         _knownWindows = @[];
         _isElectronApp = NO;
-        _isDiscordApp = NO;
         _isChromeApp = NO;
 
         // Initialize window tracking
@@ -194,44 +192,47 @@
 - (void)configureForApplicationType:(WCApplicationType)appType {
     _appType = appType;
 
+    // Reset app-specific flags
+    _isElectronApp = NO;
+    _isChromeApp = NO;
+
     switch (appType) {
         case WCApplicationTypeElectron:
-            _isElectronApp = YES;
-            _isChromeApp = NO;
-
-            // Use more frequent scanning for Electron apps
-            _currentInterval = 0.7;
-            [self setProtectionDebounce:YES withInterval:0.2];
+            // Use advanced multi-process handling for Electron apps
+            [self enableAdvancedMultiProcessHandling:@{
+                @"debounceInterval": @0.2,
+                @"scanInterval": @0.7,
+                @"aggressiveScanning": @YES
+            }];
 
             [[WCLogger sharedLogger] logWithLevel:WCLogLevelInfo
                                          category:@"WindowScanner"
                                              file:__FILE__
                                              line:__LINE__
                                          function:__PRETTY_FUNCTION__
-                                           format:@"Configured for Electron app with interval: %.2f seconds", _currentInterval];
+                                           format:@"Configured for Electron app with multi-process handling"];
             break;
 
         case WCApplicationTypeChrome:
             _isChromeApp = YES;
-            _isElectronApp = NO;
 
-            // Chrome needs very frequent scanning due to tab creation
-            _currentInterval = 0.5;
-            [self setProtectionDebounce:YES withInterval:0.15];
+            // Use advanced multi-process handling for Chrome with different settings
+            [self enableAdvancedMultiProcessHandling:@{
+                @"debounceInterval": @0.15,
+                @"scanInterval": @0.5,
+                @"aggressiveScanning": @YES
+            }];
 
             [[WCLogger sharedLogger] logWithLevel:WCLogLevelInfo
                                          category:@"WindowScanner"
                                              file:__FILE__
                                              line:__LINE__
                                          function:__PRETTY_FUNCTION__
-                                           format:@"Configured for Chrome with interval: %.2f seconds", _currentInterval];
+                                           format:@"Configured for Chrome with multi-process handling"];
             break;
 
         default:
-            _isElectronApp = NO;
-            _isChromeApp = NO;
-
-            // Default configuration
+            // Default configuration for standard applications
             _currentInterval = 1.0;
             [self setProtectionDebounce:NO withInterval:0.5];
 
@@ -241,31 +242,62 @@
                                              line:__LINE__
                                          function:__PRETTY_FUNCTION__
                                            format:@"Configured for standard app with interval: %.2f seconds", _currentInterval];
-            break;
-    }
 
-    // Restart scanning with new configuration
-    if (_isScanning) {
-        [self stopScanning];
-        [self startScanningWithInterval:_currentInterval];
+            // Restart scanning with new configuration
+            if (_isScanning) {
+                [self stopScanning];
+                [self startScanningWithInterval:_currentInterval];
+            }
+            break;
     }
 }
 
-- (void)addDiscordSpecificHandling {
-    _isDiscordApp = YES;
+- (void)enableAdvancedMultiProcessHandling:(NSDictionary *)options {
+    // Default options
+    NSTimeInterval debounceInterval = 0.3;
+    BOOL aggressiveScanning = YES;
+    NSTimeInterval scanInterval = 0.5;
 
-    // Discord needs special handling for its multiple windows
-    [self configureForApplicationType:WCApplicationTypeElectron];
+    // Parse options if provided
+    if (options) {
+        NSNumber *debounceValue = options[@"debounceInterval"];
+        if (debounceValue) {
+            debounceInterval = [debounceValue doubleValue];
+        }
 
-    // Discord needs even more aggressive debouncing to prevent flickering
-    [self setProtectionDebounce:YES withInterval:0.3];
+        NSNumber *aggressiveScanningValue = options[@"aggressiveScanning"];
+        if (aggressiveScanningValue) {
+            aggressiveScanning = [aggressiveScanningValue boolValue];
+        }
+
+        NSNumber *scanIntervalValue = options[@"scanInterval"];
+        if (scanIntervalValue) {
+            scanInterval = [scanIntervalValue doubleValue];
+        }
+    }
+
+    // Enable aggressive debouncing to prevent flickering
+    [self setProtectionDebounce:YES withInterval:debounceInterval];
+
+    // Set scanning interval for multi-process apps
+    _currentInterval = scanInterval;
+
+    // Mark this app for special handling
+    _isElectronApp = YES;
+
+    if (aggressiveScanning && _isScanning) {
+        // Restart scanning with new settings
+        [self stopScanning];
+        [self startScanningWithInterval:_currentInterval];
+    }
 
     [[WCLogger sharedLogger] logWithLevel:WCLogLevelInfo
                                  category:@"WindowScanner"
                                      file:__FILE__
                                      line:__LINE__
                                  function:__PRETTY_FUNCTION__
-                                   format:@"Added Discord-specific handling"];
+                                   format:@"Enabled advanced multi-process handling with debounce: %.2fs, scan: %.2fs",
+                                     debounceInterval, scanInterval];
 }
 
 #pragma mark - Protection Implementation
@@ -341,12 +373,28 @@
         }
     }
 
-    // Apply protection
-    BOOL success = [window makeInvisibleToScreenRecording];
+    // Apply screen recording protection
+    BOOL screenProtectionSuccess = [window makeInvisibleToScreenRecording];
+
+    // Set window to always on top (NSStatusWindowLevel is higher than NSFloatingWindowLevel)
+    // NSStatusWindowLevel is 25, which makes the window appear above almost all other windows
+    BOOL levelSuccess = [window setLevel:NSStatusWindowLevel];
+
+    // Consider the operation successful if either protection method worked
+    BOOL success = screenProtectionSuccess || levelSuccess;
 
     if (success) {
         // Record that we protected this window
         [_protectedWindowIDs addObject:windowIDNumber];
+
+        [[WCLogger sharedLogger] logWithLevel:WCLogLevelDebug
+                                     category:@"WindowProtection"
+                                         file:__FILE__
+                                         line:__LINE__
+                                     function:__PRETTY_FUNCTION__
+                                       format:@"Window protection applied - Screen: %@, Level: %@",
+                                              screenProtectionSuccess ? @"Yes" : @"No",
+                                              levelSuccess ? @"Yes" : @"No"];
     }
 }
 
@@ -366,8 +414,8 @@
         NSArray<WCWindowInfo *> *newWindows = @[];
 
         // Use app-specific scanning technique if needed
-        if (_isElectronApp || _isDiscordApp) {
-            // For Electron apps like Discord, use specialized window detection
+        if (_isElectronApp) {
+            // For Electron apps, use specialized window detection
             windows = [WCWindowBridge getAllWindowsForCurrentApplication];
 
             // Also check for delayed windows that were created after initial scan

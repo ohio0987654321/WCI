@@ -12,10 +12,29 @@
 // Keep track of detected application types
 static NSMutableDictionary<NSString *, NSNumber *> *applicationTypes;
 
+// Application type patterns for detection
+static NSArray<NSDictionary *> *applicationPatterns;
+
 // Standard Objective-C runtime initialize method
 + (void)initialize {
     if (self == [WCWindowBridge class]) {
         applicationTypes = [NSMutableDictionary dictionary];
+
+        // Initialize application patterns
+        applicationPatterns = @[
+            @{
+                @"type": @(WCApplicationTypeElectron),
+                @"bundleIdPatterns": @[@"com.electron.", @"org.electron.", @"com.github.electron"],
+                @"namePatterns": @[@"electron", @"Slack", @"VS Code", @"Visual Studio Code", @"Microsoft Teams", @"Atom", @"WhatsApp"],
+                @"frameworkPaths": @[@"Contents/Frameworks/Electron Framework.framework"]
+            },
+            @{
+                @"type": @(WCApplicationTypeChrome),
+                @"bundleIdPatterns": @[@"com.google.Chrome", @"org.chromium."],
+                @"namePatterns": @[@"Google Chrome", @"Chromium", @"Chrome"],
+                @"executableNamePatterns": @[@"Chrome", @"Chromium"]
+            }
+        ];
     }
 }
 
@@ -32,11 +51,6 @@ static NSMutableDictionary<NSString *, NSNumber *> *applicationTypes;
     if (!applicationTypes) {
         applicationTypes = [NSMutableDictionary dictionary];
     }
-
-    // Pre-register known application types for common apps
-    applicationTypes[@"/Applications/Discord.app"] = @(WCApplicationTypeElectron);
-    applicationTypes[@"/Applications/Google Chrome.app"] = @(WCApplicationTypeChrome);
-    applicationTypes[@"/Applications/Electron Apps/"] = @(WCApplicationTypeElectron);
 }
 
 #pragma mark - Window Detection
@@ -350,54 +364,103 @@ static NSMutableDictionary<NSString *, NSNumber *> *applicationTypes;
     if (infoPlist) {
         NSString *bundleID = infoPlist[@"CFBundleIdentifier"];
         NSString *executableName = infoPlist[@"CFBundleExecutable"];
+        NSString *appName = infoPlist[@"CFBundleName"];
 
-        // Check for Discord (Electron app)
-        if ([bundleID isEqualToString:@"com.rycont.Discord"] ||
-            [bundlePath containsString:@"Discord.app"]) {
-            appType = WCApplicationTypeElectron;
+        // Use our pattern-based detection system
+        for (NSDictionary *pattern in applicationPatterns) {
+            // Get the application type associated with this pattern
+            NSNumber *typeNumber = pattern[@"type"];
+            if (!typeNumber) continue;
 
-            [[WCLogger sharedLogger] logWithLevel:WCLogLevelInfo
-                                        category:@"WindowBridge"
-                                            file:__FILE__
-                                            line:__LINE__
-                                        function:__PRETTY_FUNCTION__
-                                          format:@"Detected Discord (Electron app) at path: %@", bundlePath];
-        }
-        // Check for Chrome
-        else if ([bundleID hasPrefix:@"com.google.Chrome"] ||
-                 [executableName isEqualToString:@"Google Chrome"] ||
-                 [bundlePath containsString:@"Chrome.app"]) {
-            appType = WCApplicationTypeChrome;
+            // Check bundle ID patterns
+            NSArray *bundleIdPatterns = pattern[@"bundleIdPatterns"];
+            if (bundleIdPatterns && bundleID) {
+                for (NSString *bundlePattern in bundleIdPatterns) {
+                    if ([bundleID rangeOfString:bundlePattern options:NSCaseInsensitiveSearch].location != NSNotFound) {
+                        appType = [typeNumber unsignedIntegerValue];
+                        [[WCLogger sharedLogger] logWithLevel:WCLogLevelInfo
+                                                     category:@"WindowBridge"
+                                                         file:__FILE__
+                                                         line:__LINE__
+                                                     function:__PRETTY_FUNCTION__
+                                                       format:@"Detected app type %lu by bundle ID pattern: %@",
+                                                             (unsigned long)appType, bundlePattern];
+                        goto patternFound;
+                    }
+                }
+            }
 
-            [[WCLogger sharedLogger] logWithLevel:WCLogLevelInfo
-                                        category:@"WindowBridge"
-                                            file:__FILE__
-                                            line:__LINE__
-                                        function:__PRETTY_FUNCTION__
-                                          format:@"Detected Chrome at path: %@", bundlePath];
-        }
-        // Check for other Electron apps by looking for typical Electron files/structure
-        else {
-            NSString *frameworksPath = [bundlePath stringByAppendingPathComponent:@"Contents/Frameworks"];
-            NSFileManager *fileManager = [NSFileManager defaultManager];
+            // Check app name patterns
+            NSArray *namePatterns = pattern[@"namePatterns"];
+            if (namePatterns && (appName || executableName)) {
+                NSString *nameToCheck = appName ? appName : executableName;
+                for (NSString *namePattern in namePatterns) {
+                    if ([nameToCheck rangeOfString:namePattern options:NSCaseInsensitiveSearch].location != NSNotFound ||
+                        [bundlePath rangeOfString:namePattern options:NSCaseInsensitiveSearch].location != NSNotFound) {
+                        appType = [typeNumber unsignedIntegerValue];
+                        [[WCLogger sharedLogger] logWithLevel:WCLogLevelInfo
+                                                     category:@"WindowBridge"
+                                                         file:__FILE__
+                                                         line:__LINE__
+                                                     function:__PRETTY_FUNCTION__
+                                                       format:@"Detected app type %lu by name pattern: %@",
+                                                             (unsigned long)appType, namePattern];
+                        goto patternFound;
+                    }
+                }
+            }
 
-            // Check for Electron framework
-            NSString *electronFrameworkPath = [frameworksPath stringByAppendingPathComponent:@"Electron Framework.framework"];
-            if ([fileManager fileExistsAtPath:electronFrameworkPath]) {
-                appType = WCApplicationTypeElectron;
+            // Check executable name patterns
+            NSArray *executablePatterns = pattern[@"executableNamePatterns"];
+            if (executablePatterns && executableName) {
+                for (NSString *execPattern in executablePatterns) {
+                    if ([executableName rangeOfString:execPattern options:NSCaseInsensitiveSearch].location != NSNotFound) {
+                        appType = [typeNumber unsignedIntegerValue];
+                        [[WCLogger sharedLogger] logWithLevel:WCLogLevelInfo
+                                                     category:@"WindowBridge"
+                                                         file:__FILE__
+                                                         line:__LINE__
+                                                     function:__PRETTY_FUNCTION__
+                                                       format:@"Detected app type %lu by executable pattern: %@",
+                                                             (unsigned long)appType, execPattern];
+                        goto patternFound;
+                    }
+                }
+            }
 
-                [[WCLogger sharedLogger] logWithLevel:WCLogLevelInfo
-                                            category:@"WindowBridge"
-                                                file:__FILE__
-                                                line:__LINE__
-                                            function:__PRETTY_FUNCTION__
-                                              format:@"Detected Electron app at path: %@", bundlePath];
+            // Check framework paths
+            NSArray *frameworkPaths = pattern[@"frameworkPaths"];
+            if (frameworkPaths) {
+                NSFileManager *fileManager = [NSFileManager defaultManager];
+                for (NSString *frameworkPath in frameworkPaths) {
+                    NSString *fullPath = [bundlePath stringByAppendingPathComponent:frameworkPath];
+                    if ([fileManager fileExistsAtPath:fullPath]) {
+                        appType = [typeNumber unsignedIntegerValue];
+                        [[WCLogger sharedLogger] logWithLevel:WCLogLevelInfo
+                                                     category:@"WindowBridge"
+                                                         file:__FILE__
+                                                         line:__LINE__
+                                                     function:__PRETTY_FUNCTION__
+                                                       format:@"Detected app type %lu by framework path: %@",
+                                                             (unsigned long)appType, frameworkPath];
+                        goto patternFound;
+                    }
+                }
             }
         }
     }
 
+patternFound:
     // Cache the detected type
     applicationTypes[bundlePath] = @(appType);
+
+    [[WCLogger sharedLogger] logWithLevel:WCLogLevelInfo
+                                 category:@"WindowBridge"
+                                     file:__FILE__
+                                     line:__LINE__
+                                 function:__PRETTY_FUNCTION__
+                                   format:@"Final application type detected for %@: %lu",
+                                         bundlePath, (unsigned long)appType];
 
     return appType;
 }
