@@ -17,6 +17,7 @@ typedef uint32_t CGSConnectionID;
 
 // Window types
 typedef uint32_t CGSWindowID;
+typedef uint32_t CGSWindowTag;
 
 // Window sharing types (mirroring NSWindowSharingType values)
 typedef enum {

@@ -48,6 +48,8 @@
  */
 - (BOOL)makeInvisibleToScreenRecording;
 - (BOOL)setLevel:(NSWindowLevel)level;
+- (BOOL)disableStatusBar;
+- (BOOL)setWindowTagsForMissionControlVisibility;
 
 /**
  * @brief Get a dictionary representation of this window info

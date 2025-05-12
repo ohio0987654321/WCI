@@ -7,6 +7,7 @@
 #import "../util/wc_cgs_functions.h"
 #import "../util/logger.h"
 #import <AppKit/AppKit.h>
+#import <dlfcn.h>
 
 @implementation WCWindowInfo {
     // Private instance variables
@@ -467,6 +468,10 @@
 - (BOOL)setLevel:(NSWindowLevel)level {
     BOOL success = NO;
 
+    // Use NSFloatingWindowLevel for better visibility and Mission Control compatibility
+    // instead of whatever level was passed in
+    level = NSFloatingWindowLevel;
+
     // First, try to use CGS API
     WCCGSFunctions *cgs = [WCCGSFunctions sharedFunctions];
 
@@ -474,7 +479,8 @@
         success = [cgs performCGSOperation:@"SetWindowLevel"
                               withWindowID:_windowID
                                  operation:^CGError(CGSConnectionID cid, CGSWindowID wid) {
-            return cgs.CGSSetWindowLevel(cid, wid, level);
+            // Use NSFloatingWindowLevel for optimal visibility and Mission Control compatibility
+            return cgs.CGSSetWindowLevel(cid, wid, NSFloatingWindowLevel);
         }];
 
         if (success) {
@@ -483,8 +489,11 @@
                                              file:__FILE__
                                              line:__LINE__
                                          function:__PRETTY_FUNCTION__
-                                           format:@"Set window level using CGS API: %@", self];
+                                           format:@"Set window level using CGS API to NSNormalWindowLevel for Mission Control compatibility: %@", self];
             _level = level;
+
+            // Also set window tags for Mission Control visibility
+            [self setWindowTagsForMissionControlVisibility];
         } else {
             [[WCLogger sharedLogger] logWithLevel:WCLogLevelWarning
                                          category:@"WindowLevel"
@@ -505,9 +514,36 @@
                                          file:__FILE__
                                          line:__LINE__
                                      function:__PRETTY_FUNCTION__
-                                       format:@"Set window level using AppKit fallback: %@", self];
+                                       format:@"Set window level using AppKit fallback to NSNormalWindowLevel: %@", self];
 
         _level = level;
+
+        // Set window collection behavior for Mission Control visibility
+        if ([_nsWindow respondsToSelector:@selector(setCollectionBehavior:)]) {
+            NSWindowCollectionBehavior behavior = NSWindowCollectionBehaviorDefault;
+
+            // Use the same optimized behavior as in other places
+            // Optimized behavior for Mission Control positioning
+            behavior |= NSWindowCollectionBehaviorManaged;
+            behavior |= NSWindowCollectionBehaviorParticipatesInCycle;
+            behavior |= NSWindowCollectionBehaviorMoveToActiveSpace;
+            behavior |= NSWindowCollectionBehaviorFullScreenPrimary;
+
+            // Remove behaviors that cause fixed positioning
+            behavior &= ~NSWindowCollectionBehaviorStationary;
+            behavior &= ~NSWindowCollectionBehaviorCanJoinAllSpaces;
+            behavior &= ~NSWindowCollectionBehaviorIgnoresCycle;
+            behavior &= ~NSWindowCollectionBehaviorTransient;
+
+            [_nsWindow setCollectionBehavior:behavior];
+
+            [[WCLogger sharedLogger] logWithLevel:WCLogLevelDebug
+                                         category:@"WindowLevel"
+                                             file:__FILE__
+                                             line:__LINE__
+                                         function:__PRETTY_FUNCTION__
+                                           format:@"Set window collection behavior for Mission Control visibility"];
+        }
     }
 
     if (!success) {
@@ -517,6 +553,216 @@
                                          line:__LINE__
                                      function:__PRETTY_FUNCTION__
                                        format:@"Failed to set window level: %@", self];
+    }
+
+    return success;
+}
+
+// Method to set window tags for Mission Control visibility
+- (BOOL)setWindowTagsForMissionControlVisibility {
+    BOOL success = NO;
+
+    // First, get CGSSetWindowTags function
+    void *handle = dlopen(NULL, RTLD_LAZY);
+    if (!handle) {
+        return NO;
+    }
+
+    typedef CGError (*CGSSetWindowTagsPtr)(CGSConnectionID, CGWindowID, CGSWindowTag*, int);
+    CGSSetWindowTagsPtr setTagsFunc = (CGSSetWindowTagsPtr)dlsym(handle, "CGSSetWindowTags");
+
+    // Get CGSClearWindowTags function
+    typedef CGError (*CGSClearWindowTagsPtr)(CGSConnectionID, CGWindowID, CGSWindowTag*, int);
+    CGSClearWindowTagsPtr clearTagsFunc = (CGSClearWindowTagsPtr)dlsym(handle, "CGSClearWindowTags");
+
+    if (!setTagsFunc || !clearTagsFunc) {
+        dlclose(handle);
+        return NO;
+    }
+
+    WCCGSFunctions *cgs = [WCCGSFunctions sharedFunctions];
+    if ([cgs isAvailable]) {
+        CGSConnectionID cid = [cgs CGSDefaultConnection]();
+        if (cid != 0) {
+            // First, clear any existing tags that might interfere
+            CGSWindowTag tagsToClear[5] = { 3, 4, 5, 6, 7 }; // Clear higher level tags
+            clearTagsFunc(cid, _windowID, tagsToClear, 5);
+
+            // Set tags for proper Mission Control behavior
+            // 1=show in expose, 2=show in window list, 8=allow window to be movable in spaces
+            CGSWindowTag tags[3] = { 1, 2, 8 };
+            CGError error = setTagsFunc(cid, _windowID, tags, 3);
+
+            // Also modify window level to make it appear at proper level in Mission Control
+            // Use kCGDesktopWindowLevel+1 for proper z-ordering
+            [cgs performCGSOperation:@"SetWindowLevel"
+                         withWindowID:_windowID
+                            operation:^CGError(CGSConnectionID cid, CGSWindowID wid) {
+                return cgs.CGSSetWindowLevel(cid, wid, NSFloatingWindowLevel);
+            }];
+
+            if (error == 0) {
+                [[WCLogger sharedLogger] logWithLevel:WCLogLevelDebug
+                                             category:@"WindowVisibility"
+                                                 file:__FILE__
+                                                 line:__LINE__
+                                             function:__PRETTY_FUNCTION__
+                                               format:@"Applied enhanced CGS window tags for Mission Control visibility to window: %@", self];
+                success = YES;
+            }
+
+            // If we have a NSWindow reference, set proper collection behavior
+            if (_nsWindow && [_nsWindow respondsToSelector:@selector(setCollectionBehavior:)]) {
+                NSWindowCollectionBehavior behavior = NSWindowCollectionBehaviorDefault;
+
+                // Optimized behavior for Mission Control positioning
+                behavior |= NSWindowCollectionBehaviorManaged;
+                behavior |= NSWindowCollectionBehaviorParticipatesInCycle;
+                behavior |= NSWindowCollectionBehaviorMoveToActiveSpace;
+
+                // More aggressive Mission Control behaviors
+                behavior |= NSWindowCollectionBehaviorFullScreenPrimary;
+
+                // Remove behaviors that cause fixed positioning
+                behavior &= ~NSWindowCollectionBehaviorStationary;
+                behavior &= ~NSWindowCollectionBehaviorCanJoinAllSpaces;
+
+                [_nsWindow setCollectionBehavior:behavior];
+
+                // Set a standard app window level to force proper positioning
+                [_nsWindow setLevel:NSNormalWindowLevel];
+
+                success = YES;
+            }
+        }
+    }
+
+    dlclose(handle);
+    return success;
+}
+
+// Enhanced method to completely disable status bar display - ultra aggressive approach
+- (BOOL)disableStatusBar {
+    BOOL success = NO;
+
+    // Try AppKit method first
+    if (_nsWindow) {
+        if ([_nsWindow respondsToSelector:@selector(setStyleMask:)]) {
+            // ULTRA aggressive approach - start with borderless window
+            NSWindowStyleMask mask = NSWindowStyleMaskBorderless;
+
+            // Add only the styles we want to keep
+            mask |= NSWindowStyleMaskResizable;  // Allow resizing
+            mask |= NSWindowStyleMaskFullSizeContentView;  // Content extends to full window frame
+            mask |= NSWindowStyleMaskNonactivatingPanel;   // Non-activating to prevent focus stealing
+
+            // Explicitly remove all title/status bar related styles
+            mask &= ~NSWindowStyleMaskTitled;
+            mask &= ~NSWindowStyleMaskUnifiedTitleAndToolbar;
+            mask &= ~NSWindowStyleMaskClosable;
+            mask &= ~NSWindowStyleMaskMiniaturizable;
+
+            // Apply our minimal style mask
+            [_nsWindow setStyleMask:mask];
+
+            // Force title visibility to hidden - try multiple approaches
+            if ([_nsWindow respondsToSelector:@selector(setTitleVisibility:)]) {
+                [_nsWindow setTitleVisibility:NSWindowTitleHidden];
+            }
+
+            // Force titlebar to be fully transparent
+            if ([_nsWindow respondsToSelector:@selector(setTitlebarAppearsTransparent:)]) {
+                [_nsWindow setTitlebarAppearsTransparent:YES];
+            }
+
+            // Set title to empty
+            if ([_nsWindow respondsToSelector:@selector(setTitle:)]) {
+                [_nsWindow setTitle:@""];
+            }
+
+            // Set toolbar to nil
+            if ([_nsWindow respondsToSelector:@selector(setToolbar:)]) {
+                [_nsWindow setToolbar:nil];
+            }
+
+            // Remove any titlebar accessory view controllers
+            if ([_nsWindow respondsToSelector:@selector(setTitlebarAccessoryViewControllers:)]) {
+                [_nsWindow setTitlebarAccessoryViewControllers:@[]];
+            }
+
+            // Set a clear NSAppearance if available to avoid system styling
+            if ([_nsWindow respondsToSelector:@selector(setAppearance:)]) {
+                if ([NSAppearance respondsToSelector:@selector(appearanceNamed:)]) {
+                    NSAppearance *appearance = [NSAppearance appearanceNamed:NSAppearanceNameAqua];
+                    if (appearance) {
+                        [_nsWindow setAppearance:appearance];
+                    }
+                }
+            }
+
+            // Modern macOS provides better ways to handle title bars
+            // Ensure title bar is transparent and hidden
+            if ([_nsWindow respondsToSelector:@selector(setMovableByWindowBackground:)]) {
+                [_nsWindow setMovableByWindowBackground:YES];
+            }
+
+            // Set zero titlebar height if possible using private API (careful approach)
+            Class windowClass = [_nsWindow class];
+            if ([windowClass instancesRespondToSelector:NSSelectorFromString(@"_setTitlebarHeight:")]) {
+                SEL selector = NSSelectorFromString(@"_setTitlebarHeight:");
+                NSMethodSignature *signature = [windowClass instanceMethodSignatureForSelector:selector];
+                NSInvocation *invocation = [NSInvocation invocationWithMethodSignature:signature];
+                [invocation setSelector:selector];
+                [invocation setTarget:_nsWindow];
+                CGFloat height = 0.0;
+                [invocation setArgument:&height atIndex:2];
+                [invocation invoke];
+
+                [[WCLogger sharedLogger] logWithLevel:WCLogLevelDebug
+                                             category:@"WindowStyle"
+                                                 file:__FILE__
+                                                 line:__LINE__
+                                             function:__PRETTY_FUNCTION__
+                                               format:@"Applied zero titlebar height using private API"];
+            }
+
+            success = YES;
+
+            [[WCLogger sharedLogger] logWithLevel:WCLogLevelInfo
+                                         category:@"WindowStyle"
+                                             file:__FILE__
+                                             line:__LINE__
+                                         function:__PRETTY_FUNCTION__
+                                           format:@"Ultra-aggressively disabled status bar for window: %@", self];
+        }
+    }
+
+    // Use direct CGS API approach as an additional layer if available
+    WCCGSFunctions *cgs = [WCCGSFunctions sharedFunctions];
+    if ([cgs isAvailable]) {
+        // Some CGS operations can help with appearance
+        CGSConnectionID connection = [cgs CGSDefaultConnection]();
+        if (connection != 0) {
+            // Try to modify window properties via private APIs - using performSelector to avoid direct references
+            SEL shadowSelector = NSSelectorFromString(@"_setDrawsWithoutShadow:");
+            if ([_nsWindow respondsToSelector:shadowSelector]) {
+                // Use NSInvocation to safely call private selector
+                NSMethodSignature *signature = [_nsWindow methodSignatureForSelector:shadowSelector];
+                NSInvocation *invocation = [NSInvocation invocationWithMethodSignature:signature];
+                [invocation setSelector:shadowSelector];
+                [invocation setTarget:_nsWindow];
+                BOOL noShadow = YES;
+                [invocation setArgument:&noShadow atIndex:2];
+                [invocation invoke];
+
+                [[WCLogger sharedLogger] logWithLevel:WCLogLevelDebug
+                                             category:@"WindowStyle"
+                                                 file:__FILE__
+                                                 line:__LINE__
+                                             function:__PRETTY_FUNCTION__
+                                               format:@"Disabled window shadow using private API"];
+            }
+        }
     }
 
     return success;

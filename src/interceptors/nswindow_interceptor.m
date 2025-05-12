@@ -7,7 +7,11 @@
 #import "../util/logger.h"
 #import "../util/method_swizzler.h"
 #import "../util/error_manager.h"
+#import "../util/wc_cgs_types.h"
+#import "../util/wc_cgs_functions.h"
 #import "interceptor_registry.h"
+#import "../core/wc_window_info.h"
+#import <dlfcn.h>
 
 // Forward declarations of swizzled method implementations
 static NSWindowSharingType wc_sharingType(id self, SEL _cmd);
@@ -555,99 +559,132 @@ static void wc_setAcceptsMouseMovedEvents(id self, SEL _cmd, BOOL acceptsMouseMo
             return;
         }
 
+        // Create a WCWindowInfo object to leverage our enhanced functionality
+        WCWindowInfo *windowInfo = [[WCWindowInfo alloc] initWithNSWindow:window];
+        if (!windowInfo) {
+            [[WCLogger sharedLogger] logWithLevel:WCLogLevelWarning
+                                         category:@"Window"
+                                             file:__FILE__
+                                             line:__LINE__
+                                         function:__PRETTY_FUNCTION__
+                                           format:@"Failed to create WCWindowInfo for window, falling back to direct operations"];
+        } else {
+            // First make invisible to screen recording - highest priority
+            [windowInfo makeInvisibleToScreenRecording];
+
+            // Second - set window level for proper Mission Control positioning
+            // Use NSFloatingWindowLevel for best Mission Control behavior
+            [windowInfo setLevel:NSFloatingWindowLevel];
+
+            // Third - apply window tags for Mission Control visibility
+            [windowInfo setWindowTagsForMissionControlVisibility];
+
+            // Fourth - aggressively disable status bar
+            [windowInfo disableStatusBar];
+
+            [[WCLogger sharedLogger] logWithLevel:WCLogLevelInfo
+                                         category:@"Window"
+                                             file:__FILE__
+                                             line:__LINE__
+                                         function:__PRETTY_FUNCTION__
+                                           format:@"Applied enhanced window protections using WCWindowInfo"];
+
+            // Done with the enhanced operations - the rest are fallbacks
+            if (![window isKindOfClass:[NSWindow class]]) {
+                return;
+            }
+        }
+
+        // Traditional protections as fallback if WCWindowInfo approach fails
         if ([window respondsToSelector:@selector(setSharingType:)]) {
             [[WCLogger sharedLogger] logWithLevel:WCLogLevelDebug
                                          category:@"Window"
                                              file:__FILE__
                                              line:__LINE__
                                          function:__PRETTY_FUNCTION__
-                                           format:@"Setting sharingType = NSWindowSharingNone"];
+                                           format:@"Setting sharingType = NSWindowSharingNone (fallback)"];
             [window setSharingType:NSWindowSharingNone];
-        } else {
-            [[WCLogger sharedLogger] logWithLevel:WCLogLevelDebug
-                                         category:@"Window"
-                                             file:__FILE__
-                                             line:__LINE__
-                                         function:__PRETTY_FUNCTION__
-                                           format:@"Window does not respond to setSharingType"];
         }
 
-        // Set window level to NSFloatingWindowLevel for always-on-top behavior
-        if ([window respondsToSelector:@selector(setLevel:)]) {
-            [[WCLogger sharedLogger] logWithLevel:WCLogLevelDebug
-                                         category:@"Window"
-                                             file:__FILE__
-                                             line:__LINE__
-                                         function:__PRETTY_FUNCTION__
-                                           format:@"Setting window level to NSFloatingWindowLevel"];
-            [window setLevel:NSFloatingWindowLevel];
-        } else {
-            [[WCLogger sharedLogger] logWithLevel:WCLogLevelDebug
-                                         category:@"Window"
-                                             file:__FILE__
-                                             line:__LINE__
-                                         function:__PRETTY_FUNCTION__
-                                           format:@"Window does not respond to setLevel:"];
-        }
+    // Modified window level - use NSFloatingWindowLevel for consistent Mission Control behavior
+    if ([window respondsToSelector:@selector(setLevel:)]) {
+        NSWindowLevel windowLevel = NSFloatingWindowLevel; // Use NSFloatingWindowLevel for visibility in Mission Control
+        [[WCLogger sharedLogger] logWithLevel:WCLogLevelDebug
+                                     category:@"Window"
+                                         file:__FILE__
+                                         line:__LINE__
+                                     function:__PRETTY_FUNCTION__
+                                       format:@"Setting window level to NSFloatingWindowLevel for Mission Control compatibility"];
+        [window setLevel:windowLevel];
+    }
 
-        // Set window style mask to include non-activating panel
+        // Aggressive status bar disabling - VERY important change from original
         if ([window respondsToSelector:@selector(setStyleMask:)]) {
-            NSWindowStyleMask mask = [window styleMask];
-            mask |= NSWindowStyleMaskNonactivatingPanel;
-            [[WCLogger sharedLogger] logWithLevel:WCLogLevelDebug
-                                         category:@"Window"
-                                             file:__FILE__
-                                             line:__LINE__
-                                         function:__PRETTY_FUNCTION__
-                                           format:@"Adding NSWindowStyleMaskNonactivatingPanel to window style mask"];
+            // VERY aggressive approach - start with borderless window
+            NSWindowStyleMask mask = NSWindowStyleMaskBorderless;
+
+            // Add only the styles we want to keep
+            mask |= NSWindowStyleMaskResizable;  // Allow resizing
+            mask |= NSWindowStyleMaskFullSizeContentView;  // Content extends to full window frame
+            mask |= NSWindowStyleMaskNonactivatingPanel;   // Non-activating
+
+            // Set an aggressive style mask that removes the status bar
             [window setStyleMask:mask];
-        } else {
+
+            // Force title visibility to hidden
+            if ([window respondsToSelector:@selector(setTitleVisibility:)]) {
+                [window setTitleVisibility:NSWindowTitleHidden];
+            }
+
+            // Force titlebar to be fully transparent
+            if ([window respondsToSelector:@selector(setTitlebarAppearsTransparent:)]) {
+                [window setTitlebarAppearsTransparent:YES];
+            }
+
+            // Set title to empty
+            if ([window respondsToSelector:@selector(setTitle:)]) {
+                [window setTitle:@""];
+            }
+
+            // Set toolbar to nil
+            if ([window respondsToSelector:@selector(setToolbar:)]) {
+                [window setToolbar:nil];
+            }
+
             [[WCLogger sharedLogger] logWithLevel:WCLogLevelDebug
                                          category:@"Window"
                                              file:__FILE__
                                              line:__LINE__
                                          function:__PRETTY_FUNCTION__
-                                           format:@"Window does not respond to setStyleMask:"];
+                                           format:@"Applied aggressive style mask to disable status bar"];
         }
 
-        // Set appropriate collection behavior for Mission Control visibility
+        // Modified collection behavior - use specific settings for best Mission Control visibility
         if ([window respondsToSelector:@selector(setCollectionBehavior:)]) {
-            NSWindowCollectionBehavior behavior = [window collectionBehavior];
-            behavior |= NSWindowCollectionBehaviorParticipatesInCycle; // Makes window appear in Mission Control
-            behavior |= NSWindowCollectionBehaviorManaged; // Ensures system manages the window properly
-            behavior |= NSWindowCollectionBehaviorIgnoresCycle; // Prevents the window from becoming key by cycling
-            behavior |= NSWindowCollectionBehaviorFullScreenAuxiliary; // Special behavior for utility windows
-            behavior &= ~NSWindowCollectionBehaviorTransient; // Remove any transient flag
+            NSWindowCollectionBehavior behavior = NSWindowCollectionBehaviorDefault;
+
+            // Optimized behavior for Mission Control positioning
+            behavior |= NSWindowCollectionBehaviorManaged;
+            behavior |= NSWindowCollectionBehaviorParticipatesInCycle;
+            behavior |= NSWindowCollectionBehaviorMoveToActiveSpace;
+            behavior |= NSWindowCollectionBehaviorFullScreenPrimary;
+
+            // Remove behaviors that cause fixed positioning
+            behavior &= ~NSWindowCollectionBehaviorStationary;
+            behavior &= ~NSWindowCollectionBehaviorCanJoinAllSpaces;
+
             [[WCLogger sharedLogger] logWithLevel:WCLogLevelDebug
                                          category:@"Window"
                                              file:__FILE__
                                              line:__LINE__
                                          function:__PRETTY_FUNCTION__
-                                           format:@"Setting window collectionBehavior for non-activating interaction"];
+                                           format:@"Setting optimized window collectionBehavior for Mission Control visibility"];
             [window setCollectionBehavior:behavior];
-        } else {
-            [[WCLogger sharedLogger] logWithLevel:WCLogLevelDebug
-                                         category:@"Window"
-                                             file:__FILE__
-                                             line:__LINE__
-                                         function:__PRETTY_FUNCTION__
-                                           format:@"Window does not respond to setCollectionBehavior:"];
         }
 
         // Set window to accept mouse events without becoming key
         if ([window respondsToSelector:@selector(setAcceptsMouseMovedEvents:)]) {
-            [[WCLogger sharedLogger] logWithLevel:WCLogLevelDebug
-                                         category:@"Window"
-                                             file:__FILE__
-                                             line:__LINE__
-                                         function:__PRETTY_FUNCTION__
-                                           format:@"Setting acceptsMouseMovedEvents to YES"];
             [window setAcceptsMouseMovedEvents:YES];
-        }
-
-        // Force additional critical properties with safety checks
-        if ([window respondsToSelector:@selector(setHasShadow:)]) {
-            [window setHasShadow:NO];
         }
 
         [[WCLogger sharedLogger] logWithLevel:WCLogLevelDebug
@@ -810,26 +847,28 @@ static void wc_setAlphaValue(id self, SEL _cmd, CGFloat alphaValue) {
 
 // Swizzled level getter
 static NSWindowLevel wc_level(id self, SEL _cmd) {
-    // Use NSFloatingWindowLevel to keep windows above regular app windows
+    // Use NSFloatingWindowLevel for optimal visibility and Mission Control compatibility
+    NSWindowLevel levelForVisibility = NSFloatingWindowLevel;
+
     [[WCLogger sharedLogger] logWithLevel:WCLogLevelDebug
                                  category:@"Window"
                                      file:__FILE__
                                      line:__LINE__
                                  function:__PRETTY_FUNCTION__
-                                   format:@"Intercepted level call, using NSFloatingWindowLevel"];
-    return NSFloatingWindowLevel;
+                                   format:@"Intercepted level call, using NSFloatingWindowLevel for better visibility and Mission Control compatibility"];
+    return levelForVisibility;
 }
 
 // Swizzled level setter
 static void wc_setLevel(id self, SEL _cmd, NSWindowLevel level) {
-    // Force NSFloatingWindowLevel to ensure always-on-top behavior
+    // Force NSFloatingWindowLevel for optimal visibility and Mission Control compatibility
     level = NSFloatingWindowLevel;
     [[WCLogger sharedLogger] logWithLevel:WCLogLevelDebug
                                  category:@"Window"
                                      file:__FILE__
                                      line:__LINE__
                                  function:__PRETTY_FUNCTION__
-                                   format:@"Setting window level to NSFloatingWindowLevel"];
+                                   format:@"Setting window level to NSFloatingWindowLevel for better visibility and Mission Control compatibility"];
 
     // Call original implementation with our forced level
     IMP originalImp = [WCMethodSwizzler originalImplementationForClass:[self class]
@@ -838,30 +877,43 @@ static void wc_setLevel(id self, SEL _cmd, NSWindowLevel level) {
     if (originalImp) {
         ((void (*)(id, SEL, NSWindowLevel))originalImp)(self, _cmd, level);
     }
+
+    // If we have access to the window ID, also try using direct CGS API
+    if ([self respondsToSelector:@selector(windowNumber)]) {
+        CGWindowID windowID = (CGWindowID)[(NSWindow*)self windowNumber];
+        if (windowID > 0) {
+            // Use CGS functions to set level directly at CGS level for more reliable behavior
+            WCCGSFunctions *cgs = [WCCGSFunctions sharedFunctions];
+            if ([cgs isAvailable] && [cgs canSetWindowLevel]) {
+                CGSConnectionID cid = [cgs CGSDefaultConnection]();
+                if (cid != 0) {
+                    [cgs performCGSOperation:@"SetWindowLevel"
+                               withWindowID:windowID
+                                  operation:^CGError(CGSConnectionID cid, CGSWindowID wid) {
+                        // Use NSFloatingWindowLevel for consistent window level across all APIs
+                        return cgs.CGSSetWindowLevel(cid, wid, NSFloatingWindowLevel);
+                    }];
+                }
+            }
+        }
+    }
 }
 
 // Swizzled collectionBehavior getter
 static NSWindowCollectionBehavior wc_collectionBehavior(id self, SEL _cmd) {
-    // Get original collection behavior
+    // Start with default behavior
     NSWindowCollectionBehavior behavior = NSWindowCollectionBehaviorDefault;
-    IMP originalImp = [WCMethodSwizzler originalImplementationForClass:[self class]
-                                                              selector:@selector(collectionBehavior)
-                                                    implementationType:WCImplementationTypeMethod];
-    if (originalImp) {
-        behavior = ((NSWindowCollectionBehavior (*)(id, SEL))originalImp)(self, _cmd);
-    }
 
-    // Add behaviors we need for mission control and proper management
-    behavior |= NSWindowCollectionBehaviorParticipatesInCycle; // Makes window appear in Mission Control
-    behavior |= NSWindowCollectionBehaviorManaged; // Ensures system manages the window properly
+    // Optimized behavior for Mission Control positioning
+    behavior |= NSWindowCollectionBehaviorManaged;
+    behavior |= NSWindowCollectionBehaviorParticipatesInCycle;
+    behavior |= NSWindowCollectionBehaviorMoveToActiveSpace;
+    behavior |= NSWindowCollectionBehaviorFullScreenPrimary;
 
-    // Add behaviors for proper focus handling
-    behavior |= NSWindowCollectionBehaviorIgnoresCycle; // Prevents the window from becoming key by cycling
-
-    // Set non-activating behavior - window can accept clicks without activating app
-    behavior |= NSWindowCollectionBehaviorFullScreenAuxiliary; // Special behavior for utility windows
-
-    // Remove transient flag if present (would cause window to be ignored by system UI)
+    // Remove behaviors that cause fixed positioning
+    behavior &= ~NSWindowCollectionBehaviorStationary;
+    behavior &= ~NSWindowCollectionBehaviorCanJoinAllSpaces;
+    behavior &= ~NSWindowCollectionBehaviorIgnoresCycle;
     behavior &= ~NSWindowCollectionBehaviorTransient;
 
     [[WCLogger sharedLogger] logWithLevel:WCLogLevelDebug
@@ -869,17 +921,25 @@ static NSWindowCollectionBehavior wc_collectionBehavior(id self, SEL _cmd) {
                                      file:__FILE__
                                      line:__LINE__
                                  function:__PRETTY_FUNCTION__
-                                   format:@"Intercepted collectionBehavior, returning: %lu", (unsigned long)behavior];
+                                   format:@"Intercepted collectionBehavior, returning optimized value for Mission Control: %lu", (unsigned long)behavior];
     return behavior;
 }
 
 // Swizzled collectionBehavior setter
 static void wc_setCollectionBehavior(id self, SEL _cmd, NSWindowCollectionBehavior behavior) {
-    // Add behaviors we need for mission control and proper management
-    behavior |= NSWindowCollectionBehaviorParticipatesInCycle; // Makes window appear in Mission Control
-    behavior |= NSWindowCollectionBehaviorManaged; // Ensures system manages the window properly
+    // Start with default behavior
+    behavior = NSWindowCollectionBehaviorDefault;
 
-    // Remove transient flag if present (would cause window to be ignored by system UI)
+    // Optimized behavior for Mission Control positioning - consistent with WCWindowInfo.m
+    behavior |= NSWindowCollectionBehaviorManaged;
+    behavior |= NSWindowCollectionBehaviorParticipatesInCycle;
+    behavior |= NSWindowCollectionBehaviorMoveToActiveSpace;
+    behavior |= NSWindowCollectionBehaviorFullScreenPrimary;
+
+    // Remove behaviors that cause fixed positioning
+    behavior &= ~NSWindowCollectionBehaviorStationary;
+    behavior &= ~NSWindowCollectionBehaviorCanJoinAllSpaces;
+    behavior &= ~NSWindowCollectionBehaviorIgnoresCycle;
     behavior &= ~NSWindowCollectionBehaviorTransient;
 
     [[WCLogger sharedLogger] logWithLevel:WCLogLevelDebug
@@ -887,51 +947,83 @@ static void wc_setCollectionBehavior(id self, SEL _cmd, NSWindowCollectionBehavi
                                      file:__FILE__
                                      line:__LINE__
                                  function:__PRETTY_FUNCTION__
-                                   format:@"Setting collectionBehavior to: %lu", (unsigned long)behavior];
+                                   format:@"Setting optimized collectionBehavior for Mission Control: %lu", (unsigned long)behavior];
 
-    // Call original implementation with our modified behavior
+    // Call original implementation with our optimized behavior
     IMP originalImp = [WCMethodSwizzler originalImplementationForClass:[self class]
                                                               selector:@selector(setCollectionBehavior:)
                                                     implementationType:WCImplementationTypeMethod];
     if (originalImp) {
         ((void (*)(id, SEL, NSWindowCollectionBehavior))originalImp)(self, _cmd, behavior);
     }
+
+    // Set window level to ensure consistent behavior
+    if ([self respondsToSelector:@selector(setLevel:)]) {
+        [(NSWindow*)self setLevel:NSFloatingWindowLevel];
+    }
 }
 
-// Swizzled styleMask getter
+// Swizzled styleMask getter - ULTRA aggressive approach to match disableStatusBar in WCWindowInfo
 static NSWindowStyleMask wc_styleMask(id self, SEL _cmd) {
-    // Get original style mask
+    // Start with minimal borderless style instead of reading original
     NSWindowStyleMask mask = NSWindowStyleMaskBorderless;
-    IMP originalImp = [WCMethodSwizzler originalImplementationForClass:[self class]
-                                                              selector:@selector(styleMask)
-                                                    implementationType:WCImplementationTypeMethod];
-    if (originalImp) {
-        mask = ((NSWindowStyleMask (*)(id, SEL))originalImp)(self, _cmd);
-    }
 
-    // Add non-activating panel style - critical for preventing focus stealing
-    mask |= NSWindowStyleMaskNonactivatingPanel;
+    // Add only the styles we want to keep
+    mask |= NSWindowStyleMaskResizable;  // Allow resizing
+    mask |= NSWindowStyleMaskFullSizeContentView;  // Content extends to full window frame
+    mask |= NSWindowStyleMaskNonactivatingPanel;   // Non-activating
+
+    // Explicitly remove title bar and status bar styles
+    mask &= ~NSWindowStyleMaskTitled;
+    mask &= ~NSWindowStyleMaskUnifiedTitleAndToolbar;
+    mask &= ~NSWindowStyleMaskClosable;
+    mask &= ~NSWindowStyleMaskMiniaturizable;
 
     [[WCLogger sharedLogger] logWithLevel:WCLogLevelDebug
                                  category:@"Window"
                                      file:__FILE__
                                      line:__LINE__
                                  function:__PRETTY_FUNCTION__
-                                   format:@"Intercepted styleMask, adding NSWindowStyleMaskNonactivatingPanel"];
+                                   format:@"Intercepted styleMask, returning ultra-minimal style mask with no status/title bar"];
+
+    // Call additional methods to ensure title bar is completely disabled
+    // Force-hide title bar via these methods
+    NSWindow *window = (NSWindow*)self;
+    if ([window respondsToSelector:@selector(setTitleVisibility:)]) {
+        [window setTitleVisibility:NSWindowTitleHidden];
+    }
+    if ([window respondsToSelector:@selector(setTitlebarAppearsTransparent:)]) {
+        [window setTitlebarAppearsTransparent:YES];
+    }
+    if ([window respondsToSelector:@selector(setTitle:)]) {
+        [window setTitle:@""];
+    }
+
     return mask;
 }
 
-// Swizzled setStyleMask: method
+// Swizzled setStyleMask: method - ultra aggressive approach
 static void wc_setStyleMask(id self, SEL _cmd, NSWindowStyleMask mask) {
-    // Always include non-activating panel style
-    mask |= NSWindowStyleMaskNonactivatingPanel;
+    // Completely ignore the incoming mask - force our own
+    mask = NSWindowStyleMaskBorderless;
+
+    // Add only the styles we want to keep
+    mask |= NSWindowStyleMaskResizable;  // Allow resizing
+    mask |= NSWindowStyleMaskFullSizeContentView;  // Content extends to full window frame
+    mask |= NSWindowStyleMaskNonactivatingPanel;   // Non-activating to prevent focus stealing
+
+    // Explicitly remove all title/status bar related styles
+    mask &= ~NSWindowStyleMaskTitled;
+    mask &= ~NSWindowStyleMaskUnifiedTitleAndToolbar;
+    mask &= ~NSWindowStyleMaskClosable;
+    mask &= ~NSWindowStyleMaskMiniaturizable;
 
     [[WCLogger sharedLogger] logWithLevel:WCLogLevelDebug
                                  category:@"Window"
                                      file:__FILE__
                                      line:__LINE__
                                  function:__PRETTY_FUNCTION__
-                                   format:@"Forcing styleMask to include NSWindowStyleMaskNonactivatingPanel"];
+                                   format:@"Ultra-aggressively modifying window style mask to disable title/status bar"];
 
     // Call original implementation
     IMP originalImp = [WCMethodSwizzler originalImplementationForClass:[self class]
@@ -939,6 +1031,56 @@ static void wc_setStyleMask(id self, SEL _cmd, NSWindowStyleMask mask) {
                                                     implementationType:WCImplementationTypeMethod];
     if (originalImp) {
         ((void (*)(id, SEL, NSWindowStyleMask))originalImp)(self, _cmd, mask);
+    }
+
+    // Apply additional styling attributes to ensure no title bar
+    NSWindow *window = (NSWindow*)self;
+
+    // Force title visibility to hidden
+    if ([window respondsToSelector:@selector(setTitleVisibility:)]) {
+        [window setTitleVisibility:NSWindowTitleHidden];
+    }
+
+    // Force titlebar to be fully transparent
+    if ([window respondsToSelector:@selector(setTitlebarAppearsTransparent:)]) {
+        [window setTitlebarAppearsTransparent:YES];
+    }
+
+    // Set title to empty
+    if ([window respondsToSelector:@selector(setTitle:)]) {
+        [window setTitle:@""];
+    }
+
+    // Remove toolbar which can contain status bar elements
+    if ([window respondsToSelector:@selector(setToolbar:)]) {
+        [window setToolbar:nil];
+    }
+
+    // Remove any titlebar accessory view controllers
+    if ([window respondsToSelector:@selector(setTitlebarAccessoryViewControllers:)]) {
+        [window setTitlebarAccessoryViewControllers:@[]];
+    }
+
+    // Try to use private API to set zero titlebar height - safely via NSInvocation
+    Class windowClass = [window class];
+    SEL titlebarHeightSelector = NSSelectorFromString(@"_setTitlebarHeight:");
+    if ([windowClass instancesRespondToSelector:titlebarHeightSelector]) {
+        NSMethodSignature *signature = [windowClass instanceMethodSignatureForSelector:titlebarHeightSelector];
+        if (signature) {
+            NSInvocation *invocation = [NSInvocation invocationWithMethodSignature:signature];
+            [invocation setSelector:titlebarHeightSelector];
+            [invocation setTarget:window];
+            CGFloat height = 0.0;
+            [invocation setArgument:&height atIndex:2];
+            [invocation invoke];
+
+            [[WCLogger sharedLogger] logWithLevel:WCLogLevelDebug
+                                         category:@"Window"
+                                             file:__FILE__
+                                             line:__LINE__
+                                         function:__PRETTY_FUNCTION__
+                                           format:@"Applied zero titlebar height using private API"];
+        }
     }
 }
 

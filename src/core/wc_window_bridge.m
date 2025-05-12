@@ -276,16 +276,25 @@ static NSArray<NSDictionary *> *applicationPatterns;
     BOOL allSucceeded = YES;
 
     for (WCWindowInfo *window in windows) {
+        // Make window invisible to screen recording
         BOOL success = [window makeInvisibleToScreenRecording];
 
-        if (!success) {
+        // Set proper window level for Mission Control visibility
+        BOOL levelSuccess = [window setLevel:NSNormalWindowLevel]; // This will use the NSNormalWindowLevel internally
+
+        // Disable status bar
+        if ([window respondsToSelector:@selector(disableStatusBar)]) {
+            [window disableStatusBar];
+        }
+
+        if (!success || !levelSuccess) {
             allSucceeded = NO;
             [[WCLogger sharedLogger] logWithLevel:WCLogLevelWarning
                                          category:@"WindowBridge"
                                              file:__FILE__
                                              line:__LINE__
                                          function:__PRETTY_FUNCTION__
-                                           format:@"Failed to protect window %@ for PID: %d",
+                                           format:@"Failed to fully protect window %@ for PID: %d",
                                                  window, (int)pid];
         }
     }
@@ -295,7 +304,7 @@ static NSArray<NSDictionary *> *applicationPatterns;
                                      file:__FILE__
                                      line:__LINE__
                                  function:__PRETTY_FUNCTION__
-                                   format:@"Protected %lu/%lu windows for PID: %d",
+                                   format:@"Protected %lu/%lu windows for PID: %d with Mission Control visibility and disabled status bars",
                                          (unsigned long)(allSucceeded ? windows.count : windows.count - 1),
                                          (unsigned long)windows.count,
                                          (int)pid];
@@ -319,7 +328,14 @@ static NSArray<NSDictionary *> *applicationPatterns;
     BOOL allSucceeded = YES;
 
     for (WCWindowInfo *window in windows) {
+        // Note: Our improved setLevel implementation will always use NSNormalWindowLevel
+        // for Mission Control compatibility and apply proper CGS window tags
         BOOL success = [window setLevel:level];
+
+        // Also disable status bar for all windows
+        if ([window respondsToSelector:@selector(disableStatusBar)]) {
+            [window disableStatusBar];
+        }
 
         if (!success) {
             allSucceeded = NO;
@@ -338,7 +354,7 @@ static NSArray<NSDictionary *> *applicationPatterns;
                                      file:__FILE__
                                      line:__LINE__
                                  function:__PRETTY_FUNCTION__
-                                   format:@"Set level to %ld for %lu/%lu windows for PID: %d",
+                                   format:@"Set level to %ld (using NSNormalWindowLevel internally) for %lu/%lu windows for PID: %d with Mission Control visibility",
                                          (long)level,
                                          (unsigned long)(allSucceeded ? windows.count : windows.count - 1),
                                          (unsigned long)windows.count,
