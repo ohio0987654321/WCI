@@ -42,7 +42,7 @@ WC_UTIL_FILES = $(SRC_DIR)/util/wc_cgs_functions.m \
                 $(SRC_DIR)/util/wc_cgs_types.h
 
 # Target archs for universal binary
-ARCHS = arm64 arm64e
+ARCHS = arm64 arm64e x86_64
 ARCH_FLAGS = $(foreach arch,$(ARCHS),-arch $(arch))
 
 # Code signing

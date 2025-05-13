@@ -559,7 +559,7 @@ static void wc_setAcceptsMouseMovedEvents(id self, SEL _cmd, BOOL acceptsMouseMo
             return;
         }
 
-        // Create a WCWindowInfo object to leverage our enhanced functionality
+        // Create a WCWindowInfo object to leverage our consolidated functionality
         WCWindowInfo *windowInfo = [[WCWindowInfo alloc] initWithNSWindow:window];
         if (!windowInfo) {
             [[WCLogger sharedLogger] logWithLevel:WCLogLevelWarning
@@ -567,125 +567,26 @@ static void wc_setAcceptsMouseMovedEvents(id self, SEL _cmd, BOOL acceptsMouseMo
                                              file:__FILE__
                                              line:__LINE__
                                          function:__PRETTY_FUNCTION__
-                                           format:@"Failed to create WCWindowInfo for window, falling back to direct operations"];
-        } else {
-            // First make invisible to screen recording - highest priority
-            [windowInfo makeInvisibleToScreenRecording];
-
-            // Second - set window level for proper Mission Control positioning
-            // Use NSFloatingWindowLevel for best Mission Control behavior
-            [windowInfo setLevel:NSFloatingWindowLevel];
-
-            // Third - apply window tags for Mission Control visibility
-            [windowInfo setWindowTagsForMissionControlVisibility];
-
-            // Fourth - aggressively disable status bar
-            [windowInfo disableStatusBar];
-
-            [[WCLogger sharedLogger] logWithLevel:WCLogLevelInfo
-                                         category:@"Window"
-                                             file:__FILE__
-                                             line:__LINE__
-                                         function:__PRETTY_FUNCTION__
-                                           format:@"Applied enhanced window protections using WCWindowInfo"];
-
-            // Done with the enhanced operations - the rest are fallbacks
-            if (![window isKindOfClass:[NSWindow class]]) {
-                return;
-            }
+                                           format:@"Failed to create WCWindowInfo for window, cannot apply protections"];
+            return;
         }
 
-        // Traditional protections as fallback if WCWindowInfo approach fails
-        if ([window respondsToSelector:@selector(setSharingType:)]) {
-            [[WCLogger sharedLogger] logWithLevel:WCLogLevelDebug
-                                         category:@"Window"
-                                             file:__FILE__
-                                             line:__LINE__
-                                         function:__PRETTY_FUNCTION__
-                                           format:@"Setting sharingType = NSWindowSharingNone (fallback)"];
-            [window setSharingType:NSWindowSharingNone];
-        }
+        // Apply all protections using the standardized methods in WCWindowInfo
+        // This consolidates the window protection logic in one place
+        [windowInfo makeInvisibleToScreenRecording];
+        [windowInfo setLevel:NSFloatingWindowLevel];
+        [windowInfo setWindowTagsForMissionControlVisibility];
+        [windowInfo disableStatusBar];
 
-    // Modified window level - use NSFloatingWindowLevel for consistent Mission Control behavior
-    if ([window respondsToSelector:@selector(setLevel:)]) {
-        NSWindowLevel windowLevel = NSFloatingWindowLevel; // Use NSFloatingWindowLevel for visibility in Mission Control
-        [[WCLogger sharedLogger] logWithLevel:WCLogLevelDebug
+        // No need for fallback operations since they're all handled by WCWindowInfo
+        // This eliminates code duplication and ensures consistent behavior
+
+        [[WCLogger sharedLogger] logWithLevel:WCLogLevelInfo
                                      category:@"Window"
                                          file:__FILE__
                                          line:__LINE__
                                      function:__PRETTY_FUNCTION__
-                                       format:@"Setting window level to NSFloatingWindowLevel for Mission Control compatibility"];
-        [window setLevel:windowLevel];
-    }
-
-        // Aggressive status bar disabling - VERY important change from original
-        if ([window respondsToSelector:@selector(setStyleMask:)]) {
-            // VERY aggressive approach - start with borderless window
-            NSWindowStyleMask mask = NSWindowStyleMaskBorderless;
-
-            // Add only the styles we want to keep
-            mask |= NSWindowStyleMaskResizable;  // Allow resizing
-            mask |= NSWindowStyleMaskFullSizeContentView;  // Content extends to full window frame
-            mask |= NSWindowStyleMaskNonactivatingPanel;   // Non-activating
-
-            // Set an aggressive style mask that removes the status bar
-            [window setStyleMask:mask];
-
-            // Force title visibility to hidden
-            if ([window respondsToSelector:@selector(setTitleVisibility:)]) {
-                [window setTitleVisibility:NSWindowTitleHidden];
-            }
-
-            // Force titlebar to be fully transparent
-            if ([window respondsToSelector:@selector(setTitlebarAppearsTransparent:)]) {
-                [window setTitlebarAppearsTransparent:YES];
-            }
-
-            // Set title to empty
-            if ([window respondsToSelector:@selector(setTitle:)]) {
-                [window setTitle:@""];
-            }
-
-            // Set toolbar to nil
-            if ([window respondsToSelector:@selector(setToolbar:)]) {
-                [window setToolbar:nil];
-            }
-
-            [[WCLogger sharedLogger] logWithLevel:WCLogLevelDebug
-                                         category:@"Window"
-                                             file:__FILE__
-                                             line:__LINE__
-                                         function:__PRETTY_FUNCTION__
-                                           format:@"Applied aggressive style mask to disable status bar"];
-        }
-
-        // Modified collection behavior - use specific settings for best Mission Control visibility
-        if ([window respondsToSelector:@selector(setCollectionBehavior:)]) {
-            NSWindowCollectionBehavior behavior = NSWindowCollectionBehaviorDefault;
-
-            // Optimized behavior for Mission Control positioning
-            behavior |= NSWindowCollectionBehaviorManaged;
-            behavior |= NSWindowCollectionBehaviorParticipatesInCycle;
-            behavior |= NSWindowCollectionBehaviorMoveToActiveSpace;
-            behavior |= NSWindowCollectionBehaviorFullScreenPrimary;
-
-            // Remove behaviors that cause fixed positioning
-            behavior &= ~NSWindowCollectionBehaviorStationary;
-            behavior &= ~NSWindowCollectionBehaviorCanJoinAllSpaces;
-
-            [[WCLogger sharedLogger] logWithLevel:WCLogLevelDebug
-                                         category:@"Window"
-                                             file:__FILE__
-                                             line:__LINE__
-                                         function:__PRETTY_FUNCTION__
-                                           format:@"Setting optimized window collectionBehavior for Mission Control visibility"];
-            [window setCollectionBehavior:behavior];
-        }
-
-        // Set window to accept mouse events without becoming key
-        if ([window respondsToSelector:@selector(setAcceptsMouseMovedEvents:)]) {
-            [window setAcceptsMouseMovedEvents:YES];
-        }
+                                       format:@"Applied consolidated window protections using WCWindowInfo"];
 
         [[WCLogger sharedLogger] logWithLevel:WCLogLevelDebug
                                      category:@"Window"
